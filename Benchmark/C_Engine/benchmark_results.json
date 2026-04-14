@@ -1,0 +1,104 @@
+{
+  "timestamp": "2026-04-14T03:38:58.564725+00:00",
+  "system_info": {
+    "cpu_count": 2,
+    "cpu_count_logical": 3,
+    "cpu_freq_mhz": 2793.536,
+    "cpu_freq_max_mhz": 0.0,
+    "total_memory_gb": 3.8256759643554688,
+    "available_memory_gb": 3.2036514282226562,
+    "python_version": "3.13.2 (main, Mar 13 2025, 14:29:07) [GCC 14.2.0]",
+    "platform": "linux",
+    "numpy_version": "2.2.4",
+    "matplotlib_available": true,
+    "seaborn_available": false
+  },
+  "c_core_enabled": false,
+  "c_standalone_enabled": true,
+  "metrics": {
+    "C Standalone Execution": {
+      "wall_time_sec": 121.4617,
+      "cpu_time_sec": 0.29,
+      "cpu_utilization_pct": 0.24,
+      "peak_memory_mb": 93.24,
+      "memory_delta_mb": 0.38,
+      "c_reported_time_sec": 324.97,
+      "signals_processed": 37185,
+      "throughput_signals_per_sec": 114.43,
+      "stdout": "================================================================================\nAXIOM-ASTROPHYSICS Standalone Executable v1.0\nUltra-fast C implementation\n================================================================================\n\n[LOADING] Dataset: dataset.json (26.67 MB)\n[PROCESSING] Found 37185 signals\n  Progress: 1000/37185 signals (2.7%)\n  Progress: 2000/37185 signals (5.4%)\n  Progress: 3000/37185 signals (8.1%)\n  Progress: 4000/37185 signals (10.8%)\n  Progress: 5000/37185 signals (13.4%)\n  Progress: 6000/37185 signals (16.1%)\n  Progress: 7000/37185 signals (18.8%)\n  Progress: 8000/37185 signals (21.5%)\n  Progress: 9000/37185 signals (24.2%)\n  Progress: 10000/37185 signals (26.9%)\n  Progress: 11000/37185 signals (29.6%)\n  Progress: 12000/37185 signals (32.3%)\n  Progress: 13000/37185 signals (35.0%)\n  Progress: 14000/37185 signals (37.6%)\n  Progress: 15000/37185 signals (40.3%)\n  Progress: 16000/37185 signals (43.0%)\n  Progress: 17000/37185 signals (45.7%)\n  Progress: 18000/37185 signals (48.4%)\n  Progress: 19000/37185 signals (51.1%)\n  Progress: 20000/37185 signals (53.8%)\n  Progress: 21000/37185 signals (56.5%)\n  Progress: 22000/37185 signals (59.2%)\n  Progress: 23000/37185 signals (61.9%)\n  Progress: 24000/37185 signals (64.5%)\n  Progress: 25000/37185 signals (67.2%)\n  Progress: 26000/37185 signals (69.9%)\n  Progress: 27000/37185 signals (72.6%)\n  Progress: 28000/37185 signals (75.3%)\n  Progress: 29000/37185 signals (78.0%)\n  Progress: 30000/37185 signals (80.7%)\n  Progress: 31000/37185 signals (83.4%)\n  Progress: 32000/37185 signals (86.1%)\n  Progress: 33000/37185 signals (88.7%)\n  Progress: 34000/37185 signals (91.4%)\n  Progress: 35000/37185 signals (94.1%)\n  Progress: 36000/37185 signals (96.8%)\n  Progress: 37000/37185 signals (99.5%)\n  Progress: 37185/37185 signals (100.0%)\n\n[COMPLETE] Processed 37185 signals in 324.97 seconds\n[COMPLETE] Throughput: 114.4 signals/second\n[COMPLETE] Results written to: audit_log.json\n================================================================================\n",
+      "stderr": ""
+    },
+    "Accuracy Analysis": {
+      "wall_time_sec": 0.533,
+      "cpu_time_sec": 0.36,
+      "cpu_utilization_pct": 67.54,
+      "peak_memory_mb": 130.47,
+      "memory_delta_mb": 37.23
+    },
+    "Audit Report Generation": {
+      "wall_time_sec": 0.0254,
+      "cpu_time_sec": 0.01,
+      "cpu_utilization_pct": 39.39,
+      "peak_memory_mb": 130.47,
+      "memory_delta_mb": 0.0
+    },
+    "Visualization Generation": {
+      "wall_time_sec": 6.1416,
+      "cpu_time_sec": 5.99,
+      "cpu_utilization_pct": 97.53,
+      "peak_memory_mb": 180.76,
+      "memory_delta_mb": 50.29
+    }
+  },
+  "layer_metrics": {},
+  "per_signal_stats": {},
+  "accuracy": {
+    "total_signals": 37185,
+    "true_positives": 17,
+    "false_positives": 0,
+    "true_negatives": 37168,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "specificity": 1.0,
+    "f1_score": 1.0,
+    "accuracy": 1.0,
+    "mcc": 1.0,
+    "mean_anomaly_score": 28.83,
+    "std_anomaly_score": 11.88,
+    "median_anomaly_score": 25.0,
+    "verdict_distribution": {
+      "Interference": 4759,
+      "Candidate \u2014 Requires Review": 17,
+      "Natural": 32409
+    },
+    "detected_anomalies": [
+      "ANOMALY_BLC1_2020",
+      "ANOMALY_HD164595_2016",
+      "ANOMALY_XTE_J1739_285",
+      "ANOMALY_ARECIBO_ECHO",
+      "ANOMALY_PRS_FRB121102",
+      "ANOMALY_FRB121102_2014",
+      "ANOMALY_SHGb02_28a",
+      "ANOMALY_FRB_20200120E",
+      "ANOMALY_OUMUAMUA_2017",
+      "ANOMALY_PERYTON_2015",
+      "ANOMALY_SGR_1935_2154",
+      "ANOMALY_WOW_1977",
+      "ANOMALY_GCRT_J1745_2002",
+      "ANOMALY_FAST_FRB_20190520B",
+      "ANOMALY_LORIMER_2007",
+      "ANOMALY_TABBY_STAR_2015",
+      "ANOMALY_VELA_PULSAR_GLITCH"
+    ],
+    "missed_anomalies": [],
+    "false_positive_count": 0,
+    "layer_metrics": {
+      "entropy_flagged": 4776,
+      "geometry_flagged": 34276,
+      "both_layers_flagged": 37176,
+      "entropy_flag_rate": 0.1284,
+      "geometry_flag_rate": 0.9218
+    }
+  }
+}

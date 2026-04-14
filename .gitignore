@@ -1,0 +1,128 @@
+# AXIOM-ASTROPHYSICS .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# C/C++ compiled files
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+Axiom_C/axiom_core.so
+Axiom_C/axiom_core.dll
+Axiom_C/axiom_core.dylib
+Axiom_C/axiom_standalone
+Axiom_C/axiom_standalone.exe
+
+# Dataset files (large, regenerate as needed)
+dataset.json
+dataset_test.json
+universe_data.json
+
+# Output files (regenerate as needed)
+audit_log.json
+audit_log_report.txt
+test_output.json
+
+# Benchmark results (keep folder structure, ignore timestamped runs)
+Benchmark/202*/
+Benchmark/*_*/
+
+# Keep example benchmark results for documentation
+!Benchmark/C_Engine/
+!Benchmark/PythonEngine/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Documentation build artifacts
+docs/_build/
+docs/.doctrees/
+
+# Environment variables
+.env
+.env.local
+
+# Large data files
+*.csv
+*.tsv
+*.dat
+*.fits
+*.hdf5
+
+# Compressed files (unless specifically needed)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+NOTES.txt
+
+# Keep important documentation and config
+!README.md
+!Readme.md
+!BENCHMARK.md
+!Logic.md
+!QUICKSTART_v1.md
+!BUGFIX_SUMMARY.md
+!DOCUMENTATION_UPDATE_SUMMARY.md
+!Prompt.txt
+!recompile.sh

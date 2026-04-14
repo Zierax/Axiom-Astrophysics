@@ -1,0 +1,102 @@
+================================================================================
+  AXIOM-ASTROPHYSICS BENCHMARK AUDIT REPORT
+  Generated: 2026-04-14 05:41:00
+  Total signals analyzed: 37185
+================================================================================
+
+================================================================================
+  I. EXECUTIVE SUMMARY
+================================================================================
+  Signals analyzed:                37185
+  Non-Natural detections:          0
+  Candidates requiring review:     17
+  Known anomalies in dataset:      17
+  Detection rate (Recall):         100.00%
+  False positive rate:             0.00%
+
+================================================================================
+  II. PERFORMANCE METRICS
+================================================================================
+  Total wall time:                 121.99s
+  Throughput:                      304.81 signals/sec
+  Average time per signal:         3.28ms
+  C Core acceleration:             DISABLED (Python fallback)
+
+================================================================================
+  III. DETECTION ACCURACY
+================================================================================
+  Precision:                       1.0000
+  Recall (Sensitivity):            1.0000
+  Specificity:                     1.0000
+  F1 Score:                        1.0000
+  Accuracy:                        1.0000
+  Matthews Correlation (MCC):      1.0000
+  True Positives:                  17
+  False Positives:                 0
+  True Negatives:                  37168
+  False Negatives:                 0
+
+================================================================================
+  IV. LAYER-BY-LAYER ANALYSIS
+================================================================================
+  Entropy layer flagged:           4776 (12.84%)
+  Geometry layer flagged:          34276 (92.18%)
+  Both layers flagged:             37176
+
+================================================================================
+  V. TOP 25 CANDIDATES (Ranked by Anomaly Score)
+================================================================================
+  #    Signal ID                        Score  Verdict                       
+  ----------------------------------------------------------------------------
+  1    ANOMALY_BLC1_2020                80.0   Candidate — Requires Review   
+  2    ANOMALY_HD164595_2016            80.0   Candidate — Requires Review   
+  3    ANOMALY_XTE_J1739_285            80.0   Candidate — Requires Review   
+  4    ANOMALY_SHGb02_28a               80.0   Candidate — Requires Review   
+  5    ANOMALY_WOW_1977                 80.0   Candidate — Requires Review   
+  6    ANOMALY_GCRT_J1745_2002          80.0   Candidate — Requires Review   
+  7    ANOMALY_VELA_PULSAR_GLITCH       80.0   Candidate — Requires Review   
+  8    ANOMALY_ARECIBO_ECHO             70.0   Candidate — Requires Review   
+  9    ANOMALY_FRB_20200120E            70.0   Candidate — Requires Review   
+  10   ANOMALY_SGR_1935_2154            70.0   Candidate — Requires Review   
+  11   ANOMALY_LORIMER_2007             70.0   Candidate — Requires Review   
+  12   ANOMALY_TABBY_STAR_2015          70.0   Candidate — Requires Review   
+  13   ANOMALY_FRB121102_2014           60.0   Candidate — Requires Review   
+  14   ANOMALY_PERYTON_2015             60.0   Candidate — Requires Review   
+  15   ANOMALY_FAST_FRB_20190520B       60.0   Candidate — Requires Review   
+  16   ANOMALY_PRS_FRB121102            50.0   Candidate — Requires Review   
+  17   ANOMALY_OUMUAMUA_2017            50.0   Candidate — Requires Review   
+
+================================================================================
+  VI. DETECTED KNOWN ANOMALIES
+================================================================================
+  ✓ ANOMALY_BLC1_2020
+  ✓ ANOMALY_HD164595_2016
+  ✓ ANOMALY_XTE_J1739_285
+  ✓ ANOMALY_ARECIBO_ECHO
+  ✓ ANOMALY_PRS_FRB121102
+  ✓ ANOMALY_FRB121102_2014
+  ✓ ANOMALY_SHGb02_28a
+  ✓ ANOMALY_FRB_20200120E
+  ✓ ANOMALY_OUMUAMUA_2017
+  ✓ ANOMALY_PERYTON_2015
+  ✓ ANOMALY_SGR_1935_2154
+  ✓ ANOMALY_WOW_1977
+  ✓ ANOMALY_GCRT_J1745_2002
+  ✓ ANOMALY_FAST_FRB_20190520B
+  ✓ ANOMALY_LORIMER_2007
+  ✓ ANOMALY_TABBY_STAR_2015
+  ✓ ANOMALY_VELA_PULSAR_GLITCH
+
+================================================================================
+  VIII. SYSTEM INFORMATION
+================================================================================
+  CPU cores (physical):            2
+  CPU cores (logical):             3
+  CPU frequency:                   2794 MHz
+  Total memory:                    3.83 GB
+  Platform:                        linux
+  Python version:                  3.13.2
+
+================================================================================
+  END OF BENCHMARK AUDIT REPORT
+================================================================================

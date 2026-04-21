@@ -1,0 +1,87 @@
+================================================================================
+  AXIOM-ASTROPHYSICS BENCHMARK AUDIT REPORT
+  Generated: 2026-04-21 02:56:32
+  Total signals analyzed: 34317
+  TEST SET ONLY: 17158 signals
+  Training set: 17159 signals (excluded from metrics)
+  Training set: 17159 signals (excluded from metrics)
+================================================================================
+
+================================================================================
+  I. EXECUTIVE SUMMARY (TEST SET ONLY)
+================================================================================
+  Test signals analyzed:           17158
+  Training signals (excluded):     17159
+  Non-Natural detections:          0
+  Candidates requiring review:     8
+  Known anomalies in dataset:      7
+  Detection rate (Recall):         100.00%
+  False positive rate:             0.01%
+
+================================================================================
+  II. PERFORMANCE METRICS
+================================================================================
+  Total wall time:                 117.86s
+  Throughput:                      291.18 signals/sec
+  Average time per signal:         3.43ms
+  C Core acceleration:             DISABLED (Python fallback)
+
+================================================================================
+  III. DETECTION ACCURACY
+================================================================================
+  Precision:                       0.8750
+  Recall (Sensitivity):            1.0000
+  Specificity:                     0.9999
+  F1 Score:                        0.9333
+  Accuracy:                        0.9999
+  Matthews Correlation (MCC):      0.9354
+  True Positives:                  7
+  False Positives:                 1
+  True Negatives:                  17150
+  False Negatives:                 0
+
+================================================================================
+  IV. LAYER-BY-LAYER ANALYSIS
+================================================================================
+  Entropy layer flagged:           2384 (13.89%)
+  Geometry layer flagged:          3095 (18.04%)
+  Both layers flagged:             14555
+
+================================================================================
+  V. TOP 25 CANDIDATES (Ranked by Anomaly Score)
+================================================================================
+  #    Signal ID                        Score  Verdict                       
+  ----------------------------------------------------------------------------
+  1    ANOMALY_SGR_1935_2154            60.1   Candidate — Requires Review   
+  2    ANOMALY_LORIMER_2007             60.1   Candidate — Requires Review   
+  3    ANOMALY_HD164595_2016            60.1   Candidate — Requires Review   
+  4    ANOMALY_PRS_FRB121102            60.1   Candidate — Requires Review   
+  5    ANOMALY_WOW_1977                 60.1   Candidate — Requires Review   
+  6    SIG_PUL_3BBC47E8                 40.1   Candidate — Requires Review   
+  7    ANOMALY_FRB121102_2014           40.1   Candidate — Requires Review   
+  8    ANOMALY_FRB_20200120E            40.1   Candidate — Requires Review   
+
+================================================================================
+  VI. DETECTED KNOWN ANOMALIES
+================================================================================
+  ✓ ANOMALY_SGR_1935_2154
+  ✓ ANOMALY_LORIMER_2007
+  ✓ ANOMALY_FRB121102_2014
+  ✓ ANOMALY_HD164595_2016
+  ✓ ANOMALY_PRS_FRB121102
+  ✓ ANOMALY_FRB_20200120E
+  ✓ ANOMALY_WOW_1977
+
+================================================================================
+  VIII. SYSTEM INFORMATION
+================================================================================
+  CPU cores (physical):            4
+  CPU cores (logical):             8
+  CPU frequency:                   2801 MHz
+  Total memory:                    7.91 GB
+  Platform:                        win32
+  Python version:                  3.12.2
+
+================================================================================
+  END OF BENCHMARK AUDIT REPORT
+================================================================================

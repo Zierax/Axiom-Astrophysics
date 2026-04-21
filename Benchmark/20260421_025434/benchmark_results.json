@@ -1,0 +1,92 @@
+{
+  "timestamp": "2026-04-21T00:54:34.447766+00:00",
+  "system_info": {
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq_mhz": 2801.0,
+    "cpu_freq_max_mhz": 2801.0,
+    "total_memory_gb": 7.907360076904297,
+    "available_memory_gb": 0.7925872802734375,
+    "python_version": "3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]",
+    "platform": "win32",
+    "numpy_version": "2.3.5",
+    "matplotlib_available": true,
+    "seaborn_available": true
+  },
+  "c_core_enabled": false,
+  "c_standalone_enabled": false,
+  "metrics": {
+    "Full Pipeline Execution": {
+      "wall_time_sec": 116.1262,
+      "cpu_time_sec": 129.5625,
+      "cpu_utilization_pct": 111.57,
+      "peak_memory_mb": 177.54,
+      "memory_delta_mb": 14.84
+    },
+    "Accuracy Analysis": {
+      "wall_time_sec": 1.7299,
+      "cpu_time_sec": 1.6094,
+      "cpu_utilization_pct": 93.04,
+      "peak_memory_mb": 251.97,
+      "memory_delta_mb": 74.43
+    },
+    "Audit Report Generation": {
+      "wall_time_sec": 0.0403,
+      "cpu_time_sec": 0.0469,
+      "cpu_utilization_pct": 116.22,
+      "peak_memory_mb": 251.97,
+      "memory_delta_mb": 0.0
+    },
+    "Visualization Generation": {
+      "wall_time_sec": 6.2524,
+      "cpu_time_sec": 6.125,
+      "cpu_utilization_pct": 97.96,
+      "peak_memory_mb": 272.93,
+      "memory_delta_mb": 20.96
+    }
+  },
+  "layer_metrics": {},
+  "per_signal_stats": {},
+  "accuracy": {
+    "total_signals": 17158,
+    "total_signals_all": 34317,
+    "training_signals": 17159,
+    "test_signals": 17158,
+    "true_positives": 7,
+    "false_positives": 1,
+    "true_negatives": 17150,
+    "false_negatives": 0,
+    "precision": 0.875,
+    "recall": 1.0,
+    "specificity": 0.9999,
+    "f1_score": 0.9333,
+    "accuracy": 0.9999,
+    "mcc": 0.9354,
+    "mean_anomaly_score": 9.46,
+    "std_anomaly_score": 21.02,
+    "median_anomaly_score": 0.0,
+    "verdict_distribution": {
+      "Candidate \u2014 Requires Review": 8,
+      "Interference": 2377,
+      "Natural": 14773
+    },
+    "detected_anomalies": [
+      "ANOMALY_SGR_1935_2154",
+      "ANOMALY_LORIMER_2007",
+      "ANOMALY_FRB121102_2014",
+      "ANOMALY_HD164595_2016",
+      "ANOMALY_PRS_FRB121102",
+      "ANOMALY_FRB_20200120E",
+      "ANOMALY_WOW_1977"
+    ],
+    "missed_anomalies": [],
+    "false_positive_count": 1,
+    "layer_metrics": {
+      "entropy_flagged": 2384,
+      "geometry_flagged": 3095,
+      "both_layers_flagged": 14555,
+      "entropy_flag_rate": 0.1389,
+      "geometry_flag_rate": 0.1804
+    }
+  }
+}

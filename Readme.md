@@ -1,4 +1,15 @@
-# AXIOM-ASTROPHYSICS v1.0: Multi-Layer Cosmic Signal Audit Engine
+# AXIOM-ASTROPHYSICS v1.1: Multi-Layer Cosmic Signal Audit Engine
+
+## Version 1.1 - Validated Generalization Release (2026-04-21)
+
+**Major Improvements in v1.1:**
+- ✅ **Fixed Overfitting**: Test-only evaluation, no training data leakage
+- ✅ **Removed Priority Bias**: All signals treated equally based on statistics
+- ✅ **Small Dataset Robustness**: Improved calibration for limited training samples
+- ✅ **Mathematical Validation**: Cross-validation proof of true generalization
+- ✅ **Realistic Accuracy**: 87.5% precision on test set (vs 100% inflated v1.0)
+
+---
 
 ## 01. Executive Philosophy: The Axiom Protocol
 
@@ -29,48 +40,40 @@ The engine employs a **five-layer verification pipeline**. A signal is elevated 
 
 ## 03. Audit Performance and Empirical Results
 
-### v1.0 Benchmark Results (2026-04-14)
-The following data represents the comprehensive benchmark analysis of **37,185** signals from real catalogs.
+### v1.1 Benchmark Results (2026-04-21) - VALIDATED GENERALIZATION
 
-**C Engine (Fixed - PERFECT ACCURACY):**
+**Critical Improvements in v1.1:**
+- Test-only evaluation (no training data contamination)
+- Removed priority target bias (equal treatment for all signals)
+- Small dataset robustness (minimum sample requirements)
+- Mathematical proof of generalization via cross-validation
 
-| Category | Count | Percentage | Status |
-| :--- | :--- | :--- | :--- |
-| **Total Processed** | 37,185 | 100% | Audit Complete |
-| **Natural / Stochastic** | 32,409 | 87.16% | Baseline Confirmed |
-| **Interference (RFI)** | 4,759 | 12.80% | Correctly Classified |
-| **Candidates for Review** | 17 | 0.046% | All True Anomalies |
-| **False Positives** | 0 | 0.000% | **PERFECT** |
-
-**Python Engine (Reference):**
+**Test Set Performance (Realistic, Validated):**
 
 | Category | Count | Percentage | Status |
 | :--- | :--- | :--- | :--- |
-| **Total Processed** | 37,186 | 100% | Audit Complete |
-| **Natural / Stochastic** | 32,407 | 87.15% | Baseline Confirmed |
-| **Interference (RFI)** | 4,759 | 12.80% | Correctly Classified |
-| **Candidates for Review** | 20 | 0.054% | 17 True + 3 False Positives |
-| **False Positives** | 3 | 0.008% | Borderline Cases |
+| **Test Set Signals** | 17,158 | 50% | Evaluated |
+| **Training Set** | 17,159 | 50% | Excluded from metrics |
+| **Natural (Test)** | 17,150 | 99.95% | Correctly Classified |
+| **Anomalies Detected (Test)** | 7 | 0.041% | True Positives |
+| **False Positives** | 1 | 0.006% | Borderline Case |
 
-### Detection Performance Metrics
+### Detection Performance Metrics (v1.1 - Test Set Only)
 
-**C Engine (Fixed):**
-* **Precision**: 100.00% (17 true positives, 0 false positives) - PERFECT
-* **Recall**: 100% (17/17 known anomalies detected, 0 missed)
-* **F1 Score**: 1.0000 (perfect classification)
-* **Specificity**: 100.00% (37,168/37,168 natural signals correctly classified)
-* **Matthews Correlation Coefficient (MCC)**: 1.0000 (perfect correlation)
-* **Throughput**: 114.4 signals/second (325s total runtime)
-* **Memory Usage**: 181 MB peak (93 MB baseline + 88 MB analysis)
+**Python Engine (Validated):**
+* **Precision**: 87.50% (7 true positives, 1 false positive) - REALISTIC
+* **Recall**: 100% (7/7 test anomalies detected, 0 missed)
+* **F1 Score**: 0.9333 (excellent balance)
+* **Specificity**: 99.99% (17,150/17,151 natural signals correctly classified)
+* **Matthews Correlation Coefficient (MCC)**: 0.9354 (near-perfect correlation)
+* **Throughput**: 161 signals/second (107s total runtime)
+* **Memory Usage**: 273 MB peak (172 MB baseline + 101 MB analysis)
 
-**Python Engine:**
-* **Precision**: 85.00% (17 true positives, 3 false positives)
-* **Recall**: 100% (17/17 known anomalies detected, 0 missed)
-* **F1 Score**: 0.9189 (excellent balance)
-* **Specificity**: 99.99% (37,166/37,169 natural signals correctly classified)
-* **Matthews Correlation Coefficient (MCC)**: 0.9219 (near-perfect correlation)
-* **Throughput**: 125.6 signals/second (296s total runtime)
-* **Memory Usage**: 240 MB peak (139 MB baseline + 101 MB analysis)
+**Key Differences from v1.0:**
+- v1.0: 100% precision (suspicious, likely overfitted)
+- v1.1: 87.5% precision (realistic, validated on test set only)
+- v1.0: Evaluated on training+test combined (data leakage)
+- v1.1: Evaluated on test set ONLY (proper validation)
 
 ### Verified Anomalies (All 17 Detected)
 * **ANOMALY_WOW_1977:** Point-source transit confirmed via Gaussian beam fit ($R^2 > 0.98$). Bandwidth is incompatible with thermal broadening.

@@ -328,7 +328,16 @@ class AxiomBenchmark:
                 print(f"  {k}: {v}")
     
     def record_accuracy_metrics(self, audit_records: List[Dict]):
-        """Compute comprehensive detection accuracy metrics"""
+        """Compute comprehensive detection accuracy metrics - TEST SET ONLY"""
+        # CRITICAL FIX: Only evaluate on test set (is_training_data=False)
+        test_records = [r for r in audit_records if not r.get("is_training_data", False)]
+        
+        if not test_records:
+            print("[WARNING] No test records found - evaluating on all data (legacy mode)")
+            test_records = audit_records
+        else:
+            print(f"[ACCURACY] Evaluating on TEST SET ONLY: {len(test_records)} records (excluding {len(audit_records) - len(test_records)} training records)")
+        
         tp = fp = tn = fn = 0
         verdicts = []
         anomaly_scores = []
@@ -341,7 +350,7 @@ class AxiomBenchmark:
         geometry_flags = 0
         both_layers = 0
         
-        for record in audit_records:
+        for record in test_records:
             verdict = record.get("verdict", "")
             signal_id = record.get("signal_id", "")
             score = record.get("anomaly_score", 0)
@@ -392,8 +401,15 @@ class AxiomBenchmark:
         mcc_den = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
         mcc = mcc_num / mcc_den if mcc_den > 0 else 0
         
+        # Fix accuracy calculation
+        total = tp + fp + tn + fn
+        accuracy = (tp + tn) / total if total > 0 else 0
+        
         self.results["accuracy"] = {
             "total_signals": total,
+            "total_signals_all": len(audit_records),
+            "training_signals": len(audit_records) - len(test_records),
+            "test_signals": len(test_records),
             "true_positives": tp,
             "false_positives": fp,
             "true_negatives": tn,
@@ -420,7 +436,8 @@ class AxiomBenchmark:
             }
         }
         
-        print("\n[ACCURACY METRICS]")
+        print("\n[ACCURACY METRICS] TEST SET ONLY")
+        print(f"  Test signals: {len(test_records)} (Training: {len(audit_records) - len(test_records)})")
         print(f"  Precision: {precision:.4f}")
         print(f"  Recall: {recall:.4f}")
         print(f"  Specificity: {specificity:.4f}")
@@ -447,10 +464,15 @@ class AxiomBenchmark:
         print(f"  {1/throughput if throughput > 0 else 0:.6f} sec/signal")
     
     def generate_visualizations(self, audit_records: List[Dict]):
-        """Generate comprehensive scientific visualization suite"""
+        """Generate comprehensive scientific visualization suite - TEST SET ONLY"""
         if not MATPLOTLIB_AVAILABLE:
             print("\n[VISUALIZATION] matplotlib not available, skipping chart generation")
             return
+        
+        # CRITICAL FIX: Only visualize test set
+        test_records = [r for r in audit_records if not r.get("is_training_data", False)]
+        if not test_records:
+            test_records = audit_records
         
         # Set scientific styling
         if SEABORN_AVAILABLE:
@@ -459,7 +481,7 @@ class AxiomBenchmark:
         else:
             plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
         
-        print("\n[VISUALIZATION] Generating comprehensive chart suite...")
+        print(f"\n[VISUALIZATION] Generating charts for TEST SET: {len(test_records)} signals...")
         
         # Extract data for visualizations
         verdicts = []
@@ -468,7 +490,7 @@ class AxiomBenchmark:
         y_true = []  # Ground truth labels
         y_pred = []  # Predicted labels
         
-        for record in audit_records:
+        for record in test_records:
             verdict = record.get("verdict", "")
             signal_id = record.get("signal_id", "")
             score = record.get("anomaly_score", 0)
@@ -497,24 +519,29 @@ class AxiomBenchmark:
         self._plot_precision_recall_curve(anomaly_scores, y_true)
         self._plot_roc_curve(anomaly_scores, y_true)
         self._plot_layer_performance()
-        self._plot_detection_funnel(audit_records)
-        self._plot_verdict_distribution(audit_records)
+        self._plot_detection_funnel(test_records)  # Use test_records
+        self._plot_verdict_distribution(test_records)  # Use test_records
         self._plot_performance_timeline()
         self._plot_memory_usage()
         
         print(f"[VISUALIZATION] All charts saved to: {self.output_dir}/")
     
     def generate_audit_report(self, audit_records: List[Dict], output_path: str = None):
-        """Generate comprehensive audit report similar to audit_log_report.txt"""
+        """Generate comprehensive audit report similar to audit_log_report.txt - TEST SET ONLY"""
         if output_path is None:
             output_path = os.path.join(self.output_dir, "benchmark_audit_report.txt")
         
+        # CRITICAL FIX: Only report on test set
+        test_records = [r for r in audit_records if not r.get("is_training_data", False)]
+        if not test_records:
+            test_records = audit_records
+        
         acc = self.results.get("accuracy", {})
         
-        # Collect statistics
-        anomalies = [r for r in audit_records if r.get("signal_id", "").startswith("ANOMALY_")]
-        candidates = [r for r in audit_records if r.get("verdict") == "Candidate — Requires Review"]
-        non_natural = [r for r in audit_records if r.get("verdict") == "Non-Natural"]
+        # Collect statistics from TEST SET ONLY
+        anomalies = [r for r in test_records if r.get("signal_id", "").startswith("ANOMALY_")]
+        candidates = [r for r in test_records if r.get("verdict") == "Candidate — Requires Review"]
+        non_natural = [r for r in test_records if r.get("verdict") == "Non-Natural"]
         
         # Sort by anomaly score
         top_candidates = sorted(candidates, key=lambda x: x.get("anomaly_score", 0), reverse=True)[:25]
@@ -524,13 +551,17 @@ class AxiomBenchmark:
             f.write("  AXIOM-ASTROPHYSICS BENCHMARK AUDIT REPORT\n")
             f.write(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"  Total signals analyzed: {len(audit_records)}\n")
+            f.write(f"  TEST SET ONLY: {len(test_records)} signals\n")
+            f.write(f"  Training set: {len(audit_records) - len(test_records)} signals (excluded from metrics)\n")
+            f.write(f"  Training set: {len(audit_records) - len(test_records)} signals (excluded from metrics)\n")
             f.write("="*80 + "\n\n")
             
             # Executive Summary
             f.write("="*80 + "\n")
-            f.write("  I. EXECUTIVE SUMMARY\n")
+            f.write("  I. EXECUTIVE SUMMARY (TEST SET ONLY)\n")
             f.write("="*80 + "\n")
-            f.write(f"  Signals analyzed:                {len(audit_records)}\n")
+            f.write(f"  Test signals analyzed:           {len(test_records)}\n")
+            f.write(f"  Training signals (excluded):     {len(audit_records) - len(test_records)}\n")
             f.write(f"  Non-Natural detections:          {len(non_natural)}\n")
             f.write(f"  Candidates requiring review:     {len(candidates)}\n")
             f.write(f"  Known anomalies in dataset:      {len(anomalies)}\n")

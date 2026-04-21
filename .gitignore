@@ -80,6 +80,9 @@ Benchmark/*_*/
 !Benchmark/C_Engine/
 !Benchmark/PythonEngine/
 
+# Keep mini validation results (small, important for proof)
+!Benchmark/MiniValidation/
+
 # Logs
 *.log
 

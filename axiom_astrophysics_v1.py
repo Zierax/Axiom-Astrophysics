@@ -1,6 +1,6 @@
 """
-AXIOM-ASTROPHYSICS v1.0 - Pure Python Pipeline
-High-performance cosmic signal analysis
+AXIOM-ASTROPHYSICS v1.1 - Pure Python Pipeline
+High-performance cosmic signal analysis with validated generalization
 """
 from __future__ import annotations
 
@@ -240,7 +240,17 @@ class LambdaCDMModel:
 
     def fit(self, training_pool: list[dict]) -> None:
         natural_signals = [s for s in training_pool if s["origin_class"] == "Natural"]
-        fit_pool = natural_signals if len(natural_signals) >= 10 else training_pool
+        
+        # CRITICAL FIX: Require minimum natural signals for reliable calibration
+        if len(natural_signals) < 5:
+            logger.warning(
+                "LambdaCDMModel: Only %d natural signals in training pool (need >= 5). "
+                "Using all training signals for calibration.",
+                len(natural_signals)
+            )
+            fit_pool = training_pool
+        else:
+            fit_pool = natural_signals
 
         # Build feature matrix
         X = np.array([self._signal_to_vector(s) for s in fit_pool], dtype=float)
@@ -363,11 +373,31 @@ class EntropyAnalyzer:
 
     def calibrate(self, training_pool: list[dict]) -> None:
         natural_signals = [s for s in training_pool if s["origin_class"] == "Natural"]
+        
+        # CRITICAL FIX: Require minimum natural signals
+        if len(natural_signals) < 3:
+            logger.warning(
+                "EntropyAnalyzer: Only %d natural signals (need >= 3). Using all training signals.",
+                len(natural_signals)
+            )
+            natural_signals = training_pool
+        
         densities = np.array([self._entropy_density(s) for s in natural_signals], dtype=float)
         self._natural_mean = float(np.mean(densities))
         self._natural_std = float(np.std(densities))
+        
+        # CRITICAL FIX: Prevent division by zero or negative thresholds
+        if self._natural_std < 0.01:
+            self._natural_std = 0.1
+            logger.warning("EntropyAnalyzer: Very low std (%.4f), using 0.1", self._natural_std)
+        
         # Tighten threshold to 2.0σ for more robust anomaly detection
         self._threshold = self._natural_mean - 2.0 * self._natural_std
+        
+        # CRITICAL FIX: Ensure threshold is reasonable (not too low)
+        if self._threshold < 0.1:
+            self._threshold = 0.1
+            logger.warning("EntropyAnalyzer: Threshold too low, using 0.1")
 
         # Calibrate duration log-scale distribution
         durations = np.array([s.get("duration_sec", 60.0) for s in natural_signals], dtype=float)
@@ -424,8 +454,26 @@ class GeometryDetector:
 
     def calibrate(self, training_pool: list[dict]) -> None:
         natural = [s for s in training_pool if s["origin_class"] == "Natural"]
+        
+        # CRITICAL FIX: Require minimum natural signals
+        if len(natural) < 3:
+            logger.warning(
+                "GeometryDetector: Only %d natural signals (need >= 3). Using all training signals.",
+                len(natural)
+            )
+            natural = training_pool
+        
         broadband = [s for s in natural if s["bandwidth_efficiency"] == "Broadband"]
         narrowband_natural = [s for s in natural if s["bandwidth_efficiency"] == "Narrowband"]
+        
+        # CRITICAL FIX: Ensure minimum samples for each bandwidth type
+        if len(broadband) < 3:
+            logger.warning("GeometryDetector: Only %d broadband signals, using all natural", len(broadband))
+            broadband = natural
+        
+        if len(narrowband_natural) < 3:
+            logger.warning("GeometryDetector: Only %d narrowband signals, using all natural", len(narrowband_natural))
+            narrowband_natural = natural
 
         def _fit_submodel(signals: list[dict], percentile: float = 95) -> dict:
             freqs = np.array([s["frequency_mhz"] for s in signals], dtype=float)
@@ -597,19 +645,16 @@ class TruthimaticsEngine:
 
         # Step 2: OPTIMIZED Adaptive trial count - reduced for speed without accuracy loss
         # Use progressive refinement: start small, increase only if needed
-        is_priority = signal.get("signal_id", "") in PRIORITY_TARGET_IDS
+        # REMOVED PRIORITY TARGET BIAS - all signals treated equally based on statistics
         
-        if is_priority:
-            # Priority targets: use 100K trials (10x reduction from 1M)
-            n_trials_used = max(n_trials, 100_000)
-        elif signal_distance > 8.0:
-            # Very extreme outliers: 50K trials (2x reduction from 100K)
+        if signal_distance > 8.0:
+            # Very extreme outliers: 50K trials
             n_trials_used = max(n_trials, 50_000)
         elif signal_distance > 5.0:
-            # Moderate outliers: 20K trials (2.5x reduction from 50K)
+            # Moderate outliers: 20K trials
             n_trials_used = max(n_trials, 20_000)
         else:
-            # Normal cases: 5K trials (2x reduction from 10K)
+            # Normal cases: 5K trials
             n_trials_used = max(n_trials, 5_000)
 
         # Step 3: Generate synthetic signals and compute their Mahalanobis distances
@@ -1525,23 +1570,27 @@ class AxiomPipeline:
         # Step 7: Set priority_target=True for all known anomaly IDs (already set in _analyze_signal)
         # (handled inline above via PRIORITY_TARGET_IDS check)
 
-        # Step 8: Calibration report on test pool records
+        # Step 8: Calibration report on test pool records ONLY
         calibration_report = CalibrationReporter().report(test_records)
-        # Fix 4: stamp calibration_certainty on ALL records, not just test pool
         for record in test_records:
             record["calibration_certainty"] = calibration_report.calibration_certainty
+        # Mark training records with 0.0 certainty (not used for validation)
         for record in training_records:
-            record["calibration_certainty"] = calibration_report.calibration_certainty
+            record["calibration_certainty"] = 0.0
+            record["is_training_data"] = True
+        for record in test_records:
+            record["is_training_data"] = False
 
         # Combine all records
         all_records = training_records + test_records
 
-        # Step 9: Self-correction
-        SelfCorrectionEngine().check_and_correct(all_records, entropy_analyzer, geometry_detector)
+        # Step 9: Self-correction (only on test pool to avoid data leakage)
+        SelfCorrectionEngine().check_and_correct(test_records, entropy_analyzer, geometry_detector)
 
         # Step 10: Write audit log
         AuditLogWriter().write(all_records, config.output_path)
-        logger.info("Pipeline complete — %d records written to %s", len(all_records), config.output_path)
+        logger.info("Pipeline complete — %d total records (%d training, %d test) written to %s", 
+                   len(all_records), len(training_records), len(test_records), config.output_path)
 
         # Step 11: Write human-readable report
         report_path = config.output_path.replace(".json", "_report.txt")

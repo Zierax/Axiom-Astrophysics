@@ -39,9 +39,6 @@ env/
 *~
 .DS_Store
 
-# Draft review artifacts (research notes, not shipped code/doc)
-docs/_review/
-
 # Paper / manuscript workspace (authored locally; exported on submission, not tracked)
 paper/
 paper/*

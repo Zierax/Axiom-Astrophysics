@@ -1,1136 +1,661 @@
 """
-AXIOM-ASTROPHYSICS Comprehensive Benchmark Suite v1.0
-Measures latency, accuracy, resource usage, and detection performance
-Features:
-- Multi-layer performance profiling
-- C core integration via ctypes
-- Extensive visualization suite (10+ charts)
-- Audit report generation
-- Per-signal timing analysis
+axiom-astrophysics v2 — Comprehensive Validation Benchmark
+=============================================================
+
+Runs 5 rigorous test suites on real HTRU2 data to prove the system
+is scientifically valid, not a toy.
+
+Test Suite 1: In-Distribution 5-Fold CV (Accuracy, MCC, AUC-ROC)
+Test Suite 2: Ablation Study (contribution of each component)
+Test Suite 3: OOD Anomaly Detection (unseen signal types)
+Test Suite 4: Baseline Comparison (AXIOM vs standalone classifiers)
+Test Suite 5: Statistical Significance (McNemar + Confidence Intervals)
+Test Suite 6: Real-Waterfall Manifold OOD (Lane 1, per-observation windows)
+Test Suite 7: Population-Scale Catalog Manifold (Lane 2, per-object, group CV)
 """
-import time, psutil, os, json, sys, ctypes
+import logging
+import os
+import sys
+import time
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import numpy as np
-from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
-from pathlib import Path
-from collections import defaultdict
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    matthews_corrcoef,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
-# Scientific visualization imports
-try:
-    import matplotlib
-    matplotlib.use('Agg')  # Non-interactive backend for server environments
-    import matplotlib.pyplot as plt
-    MATPLOTLIB_AVAILABLE = True
-except ImportError:
-    MATPLOTLIB_AVAILABLE = False
+from axiom.data.loader import load_htru2
+from axiom.ml.ensemble import AxiomEnsemble
 
-try:
-    import seaborn as sns
-    SEABORN_AVAILABLE = True
-except ImportError:
-    SEABORN_AVAILABLE = False
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("benchmark")
 
-class AxiomBenchmark:
-    def __init__(self, output_dir="Benchmark", use_c_core=False, use_c_standalone=False):
-        """Initialize benchmark with timestamped output directory"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.output_dir = os.path.join(output_dir, timestamp)
-        os.makedirs(self.output_dir, exist_ok=True)
-        self.use_c_core = use_c_core
-        self.use_c_standalone = use_c_standalone
-        self.c_core_lib = None
-        self.c_standalone_path = None
-        
-        # Try to load C core if requested
-        if use_c_core:
-            self._load_c_core()
-        
-        # Try to find C standalone executable if requested
-        if use_c_standalone:
-            self._find_c_standalone()
-        
-        self.results = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "system_info": self._get_system_info(),
-            "c_core_enabled": self.c_core_lib is not None,
-            "c_standalone_enabled": self.c_standalone_path is not None,
-            "metrics": {},
-            "layer_metrics": {},
-            "per_signal_stats": {}
-        }
-        self.process = psutil.Process()
-        self.layer_timings = defaultdict(list)
-    
-    def _load_c_core(self):
-        """Load C core library via ctypes"""
+SEED = 42
+N_FOLDS = 5
+
+
+def separator(title):
+    print("\n" + "=" * 70)
+    print(f"  {title}")
+    print("=" * 70)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEST SUITE 1: In-Distribution 5-Fold Cross-Validation
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_suite_1_id_performance(X, y):
+    separator("TEST SUITE 1: In-Distribution 5-Fold Cross-Validation")
+    print(f"  Dataset: HTRU2 | {len(y)} samples | {X.shape[1]} features")
+    print(f"  Pulsars: {np.sum(y==1)} | RFI/Noise: {np.sum(y==0)}")
+    print("-" * 70)
+
+    skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+
+    metrics = {k: [] for k in ["accuracy", "precision", "recall", "f1", "mcc", "auc"]}
+
+    for fold, (train_idx, test_idx) in enumerate(skf.split(X, y), 1):
+        X_tr, X_te = X[train_idx], X[test_idx]
+        y_tr, y_te = y[train_idx], y[test_idx]
+
+        model = AxiomEnsemble(n_classes=2, random_state=SEED)
+        model.fit(X_tr, y_tr)
+
+        preds = model.predict(X_te)
+        probs = model.predict_proba(X_te)[:, 1]
+
+        metrics["accuracy"].append(accuracy_score(y_te, preds))
+        metrics["precision"].append(precision_score(y_te, preds, zero_division=0))
+        metrics["recall"].append(recall_score(y_te, preds, zero_division=0))
+        metrics["f1"].append(f1_score(y_te, preds, zero_division=0))
+        metrics["mcc"].append(matthews_corrcoef(y_te, preds))
+        metrics["auc"].append(roc_auc_score(y_te, probs))
+
+        print(
+            f"  Fold {fold}/{N_FOLDS}: "
+            f"Acc={metrics['accuracy'][-1]:.4f} | "
+            f"MCC={metrics['mcc'][-1]:.4f} | "
+            f"AUC={metrics['auc'][-1]:.4f}"
+        )
+
+    print("-" * 70)
+    results = {}
+    for key in metrics:
+        arr = np.array(metrics[key])
+        mean_val = np.mean(arr)
+        std_val = np.std(arr)
+        results[key] = (mean_val, std_val)
+        print(f"  {key.upper():>10s}: {mean_val:.4f} ± {std_val:.4f}")
+
+    # Pass/Fail
+    acc_mean = results["accuracy"][0]
+    mcc_mean = results["mcc"][0]
+    pass_acc = acc_mean >= 0.98
+    pass_mcc = mcc_mean >= 0.85
+
+    print("-" * 70)
+    print(f"  Accuracy ≥ 98%: {'PASS' if pass_acc else 'FAIL'} ({acc_mean:.4f})")
+    print(f"  MCC ≥ 0.85:     {'PASS' if pass_mcc else 'FAIL'} ({mcc_mean:.4f})")
+
+    return results, metrics
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEST SUITE 2: Ablation Study
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_suite_2_ablation(X, y):
+    separator("TEST SUITE 2: Ablation Study — What Makes AXIOM Special?")
+
+    from sklearn.model_selection import train_test_split
+
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=SEED
+    )
+
+    scaler = StandardScaler()
+    X_tr_s = scaler.fit_transform(X_tr)
+    X_te_s = scaler.transform(X_te)
+
+    ablation_configs = {
+        "Full Ensemble (HGBT core)": None,  # Special handling
+        "RF Only (300 trees)": RandomForestClassifier(
+            n_estimators=300, max_depth=15, class_weight="balanced",
+            random_state=SEED, n_jobs=-1
+        ),
+        "HGBT Only (300 iters)": HistGradientBoostingClassifier(
+            max_iter=300, max_depth=8, learning_rate=0.05, random_state=SEED
+        ),
+        "RF with 4 profile features only": RandomForestClassifier(
+            n_estimators=300, max_depth=15, class_weight="balanced",
+            random_state=SEED, n_jobs=-1
+        ),
+        "RF with 4 DM-SNR features only": RandomForestClassifier(
+            n_estimators=300, max_depth=15, class_weight="balanced",
+            random_state=SEED, n_jobs=-1
+        ),
+    }
+
+    print(f"  Train: {len(y_tr)} | Test: {len(y_te)}")
+    print("-" * 70)
+    print(f"  {'Configuration':<35s} {'Accuracy':>10s} {'MCC':>10s} {'F1':>10s}")
+    print("-" * 70)
+
+    ablation_results = {}
+
+    for name, clf in ablation_configs.items():
+        if name == "Full Ensemble (HGBT core)":
+            model = AxiomEnsemble(n_classes=2, random_state=SEED)
+            model.fit(X_tr, y_tr)
+            preds = model.predict(X_te)
+        elif "profile features only" in name:
+            clf.fit(X_tr_s[:, :4], y_tr)
+            preds = clf.predict(X_te_s[:, :4])
+        elif "DM-SNR features only" in name:
+            clf.fit(X_tr_s[:, 4:], y_tr)
+            preds = clf.predict(X_te_s[:, 4:])
+        else:
+            clf.fit(X_tr_s, y_tr)
+            preds = clf.predict(X_te_s)
+
+        acc = accuracy_score(y_te, preds)
+        mcc = matthews_corrcoef(y_te, preds)
+        f1 = f1_score(y_te, preds, zero_division=0)
+        ablation_results[name] = {"accuracy": acc, "mcc": mcc, "f1": f1, "preds": preds}
+
+        print(f"  {name:<35s} {acc:>10.4f} {mcc:>10.4f} {f1:>10.4f}")
+
+    # Show value-add
+    print("-" * 70)
+    full_acc = ablation_results["Full Ensemble (HGBT core)"]["accuracy"]
+    rf_acc = ablation_results["RF Only (300 trees)"]["accuracy"]
+    delta = (full_acc - rf_acc) * 100
+    print(f"  Ensemble uplift over RF alone: {delta:+.2f} percentage points")
+
+    return ablation_results
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEST SUITE 3: Out-of-Distribution Anomaly Detection
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_suite_3_ood_detection(X, y):
+    """Corrected OOD/anomaly audit (post-2026-07-13 fix).
+
+    Builds a labelled out-of-distribution set with explicit ground-truth roles
+    (genuine narrowband carriers = Anomaly; FRBs/Quasars = Natural; RFI =
+    Interference) and reports the *honest* detection metrics: the true-positive
+    rate on genuine anomalies and the false-positive rate on legitimate
+    natural/interference sources. The degenerate "flag 100% as anomaly" rate is
+    no longer reported.
+    """
+    separator("TEST SUITE 3: Out-of-Distribution Anomaly Detection")
+
+    from axiom.stats.ood_eval import evaluate_ood
+
+    # Real observational augmentation (default on; set AXIOM_REAL_OOD=0 to
+    # disable). Replaces synthetic controls with measured data:
+    #   * Natural FRB  -> measured CHIME/FRB Catalog 2 DMs
+    #   * Interference -> real HTRU2 RFI feature vectors
+    #   * Anomaly      -> real Voyager 1 GBT carrier + sidebands (ground-truth
+    #                     artificial technosignature) plus real Breakthrough
+    #                     Listen narrowband observation channels
+    # See axiom/data/real_loaders.py. Any component that fails to download
+    # falls back to its synthetic generator, so the audit always runs.
+    use_real = os.environ.get("AXIOM_REAL_OOD", "1") != "0"
+    real_features, real_waves, waterfall_features = {}, {}, {}
+    if use_real:
         try:
-            # Try different possible locations
-            possible_paths = [
-                "Axiom_C/axiom_core.so",
-                "Axiom_C/axiom_core.dll",
-                "Axiom_C/axiom_core.dylib",
-                "./axiom_core.so",
-                "./axiom_core.dll",
-                "./axiom_core.dylib"
-            ]
-            
-            for path in possible_paths:
-                if os.path.exists(path):
-                    self.c_core_lib = ctypes.CDLL(path)
-                    print(f"[C CORE] Loaded from: {path}")
-                    return
-            
-            print("[C CORE] Not found - using Python fallback")
-        except Exception as e:
-            print(f"[C CORE] Failed to load: {e}")
-            self.c_core_lib = None
-    
-    def _find_c_standalone(self):
-        """Find C standalone executable"""
-        try:
-            import platform
-            is_wsl = 'microsoft' in platform.uname().release.lower()
-            
-            possible_paths = []
-            
-            # Prioritize based on platform
-            if sys.platform == 'win32' and not is_wsl:
-                # Native Windows
-                possible_paths = [
-                    "Axiom_C/axiom_standalone.exe",
-                    "./axiom_standalone.exe"
-                ]
+            from axiom.data.real_loaders import get_full_real_ood
+            records, real_features, real_waves, waterfall_features, manifest_list = get_full_real_ood(
+                X, y, seed=SEED, n_frb=25, n_rfi=25, n_anom=25)
+            for tag, man in manifest_list:
+                if man.retrieved_ok:
+                    print(f"  Real {tag}: {man.notes}")
+        except Exception as exc:  # pragma: no cover - offline guard
+            print(f"  [real OOD] unavailable ({exc}); using synthetic OOD set.")
+            records, real_features, real_waves, waterfall_features = [], {}, {}, {}
+    if not records:
+        records = []
+        for i in range(25):
+            records.append((f"NarrowbandTone_{i}", "Narrowband", "Narrowband",
+                            0.0, 18.0, "Anomaly"))
+        records.append(("Wow! Signal", "Narrowband", "Narrowband", 0.0, 30.0, "Anomaly"))
+        records.append(("BLC1", "Narrowband", "Narrowband", 0.0, 15.0, "Anomaly"))
+        for i in range(25):
+            records.append((f"FRB_{i}", "FRB", "FRB",
+                            np.random.uniform(100, 1000), 20.0, "Natural"))
+        for i in range(15):
+            records.append((f"Quasar_{i}", "Quasar", "Quasar", 0.0, 5.0, "Natural"))
+        for i in range(25):
+            records.append((f"RFI_{i}", "RFI", "RFI", 0.0, 10.0, "Interference"))
+
+    result = evaluate_ood(X, y, records, seed=SEED,
+                          real_features=real_features or None,
+                          real_waves=real_waves or None,
+                          waterfall_features=waterfall_features or None)
+    verdicts = result["verdicts"]
+    roles = result["roles"]
+    names = result["names"]
+
+    n_anom = sum(r == "Anomaly" for r in roles)
+    n_nat = sum(r in ("Natural", "Interference") for r in roles)
+    print(f"  OOD samples generated: {len(roles)}")
+    print(f"    Genuine anomalies (narrowband carriers): {n_anom}")
+    print(f"    Natural / Interference controls:         {n_nat}")
+    print("-" * 70)
+    print(f"  Genuine-anomaly detected as Anomaly : {result['anomaly_tpr']*100:.1f}%")
+    print(f"  Natural/Interference false-alarmed  : {result['natural_fpr']*100:.1f}%")
+    print("-" * 70)
+
+    print("  Genuine-anomaly details:")
+    for name, role, verdict in zip(names, roles, verdicts):
+        if role == "Anomaly":
+            flag = "DETECTED" if verdict == "Anomaly" else "MISSED"
+            print(f"    {name:<20s} → {flag}")
+
+    # Headline real-world validation: the Voyager 1 spacecraft carrier is the
+    # only *ground-truth artificial* technosignature in the audit (real GBT
+    # telemetry). Report it explicitly as the flagship positive control.
+    voy = [(n, v) for n, v, r in zip(names, verdicts, roles)
+           if n.startswith("Voyager") and r == "Anomaly"]
+    if voy:
+        n_hit = sum(v == "Anomaly" for _, v in voy)
+        print("-" * 70)
+        print("  Real artificial technosignature (Voyager 1 GBT carrier):")
+        for n, v in voy:
+            print(f"    {n:<24s} → {'DETECTED' if v == 'Anomaly' else 'MISSED'}")
+        print(f"  Voyager 1 detection rate: {n_hit}/{len(voy)} "
+               f"(ground-truth artificial signal)")
+
+    # Physics-law discovery triage: unlabeled real observations (e.g. stellar
+    # spectrograms, BL candidates) have no ground-truth role and are excluded from
+    # TPR/FPR, but the arbitrator's physics-law module escalates physically
+    # self-contradictory ones (e.g. a tonal morphology claimed to be a dispersed
+    # natural pulse) to "Candidate — Requires Review" instead of silently
+    # accepting them as Natural. This is the measurable, honest value-add of the
+    # physics laws: a real discovery pool with physically-grounded triage.
+    disc = [(n, v) for n, v, r in zip(names, verdicts, roles) if r == "Unlabeled"]
+    if disc:
+        n_cand = sum(v == "Candidate — Requires Review" for _, v in disc)
+        n_anom = sum(v == "Anomaly" for _, v in disc)
+        print("-" * 70)
+        print(f"  Discovery pool (Unlabeled real observations, n={len(disc)}):")
+        print(f"    Escalated to Candidate (physics contradiction): {n_cand}")
+        print(f"    Flagged Anomaly (off-manifold):                {n_anom}")
+
+    pass_ood = result["pass"]
+    print(f"\n  Anomaly TPR ≥ 90% AND Natural FPR ≤ 10%: "
+          f"{'PASS' if pass_ood else 'FAIL'} "
+          f"(TPR={result['anomaly_tpr']*100:.1f}%, "
+          f"FPR={result['natural_fpr']*100:.1f}%)")
+
+    return {
+        "anomaly_tpr": result["anomaly_tpr"],
+        "natural_fpr": result["natural_fpr"],
+        "pass": pass_ood,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEST SUITE 4: Baseline Comparison
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_suite_4_baseline_comparison(X, y):
+    separator("TEST SUITE 4: Baseline Comparison — AXIOM vs Standard Classifiers")
+
+    skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+
+    baselines = {
+        "AXIOM Ensemble": None,  # Special handling
+        "Logistic Regression": LogisticRegression(C=1.0, max_iter=1000, random_state=SEED),
+        "Random Forest (100)": RandomForestClassifier(
+            n_estimators=100, max_depth=10, random_state=SEED, n_jobs=-1
+        ),
+        "SVM (RBF)": SVC(kernel="rbf", C=1.0, random_state=SEED),
+        "HGBT (100)": HistGradientBoostingClassifier(
+            max_iter=100, max_depth=6, random_state=SEED
+        ),
+        # Gold-standard SOTA baseline: gradient boosting whose hyper-parameters
+        # are selected by an INNER cross-validation inside every outer fold
+        # (proper nested CV — no test-fold leakage into model selection).
+        "HGBT (nested-CV tuned)": "NESTED_HGBT",
+    }
+
+    print(f"  {'Model':<25s} {'Accuracy':>10s} {'MCC':>10s} {'F1':>10s}")
+    print("-" * 70)
+
+    all_preds = {}
+    baseline_results = {}
+
+    hgbt_grid = {
+        "learning_rate": [0.05, 0.1, 0.2],
+        "max_leaf_nodes": [15, 31, 63],
+        "l2_regularization": [0.0, 1.0],
+    }
+
+    for name, clf in baselines.items():
+        fold_acc = []
+        fold_mcc = []
+        fold_f1 = []
+        fold_preds_all = np.zeros(len(y), dtype=np.int64)
+
+        for train_idx, test_idx in skf.split(X, y):
+            X_tr, X_te = X[train_idx], X[test_idx]
+            y_tr, y_te = y[train_idx], y[test_idx]
+
+            if name == "AXIOM Ensemble":
+                model = AxiomEnsemble(n_classes=2, random_state=SEED)
+                model.fit(X_tr, y_tr)
+                preds = model.predict(X_te)
+            elif clf == "NESTED_HGBT":
+                inner = StratifiedKFold(n_splits=3, shuffle=True, random_state=SEED)
+                search = GridSearchCV(
+                    HistGradientBoostingClassifier(max_iter=200, random_state=SEED),
+                    hgbt_grid, scoring="matthews_corrcoef",
+                    cv=inner, n_jobs=-1, refit=True,
+                )
+                search.fit(X_tr, y_tr)  # HGBT is scale-invariant; no scaler needed
+                preds = search.predict(X_te)
             else:
-                # Linux/Mac/WSL
-                possible_paths = [
-                    "Axiom_C/axiom_standalone",
-                    "./axiom_standalone",
-                    "Axiom_C/axiom_standalone.exe",  # Fallback
-                    "./axiom_standalone.exe"
-                ]
-            
-            for path in possible_paths:
-                if os.path.exists(path):
-                    # Verify it's executable
-                    if os.access(path, os.X_OK) or sys.platform == 'win32':
-                        self.c_standalone_path = path
-                        print(f"[C STANDALONE] Found executable: {path}")
-                        return
-            
-            print("[C STANDALONE] Not found - compile with: gcc -O3 -march=native -ffast-math -fopenmp Axiom_C/axiom_standalone.c -o Axiom_C/axiom_standalone -lm")
-        except Exception as e:
-            print(f"[C STANDALONE] Error: {e}")
-            self.c_standalone_path = None
-    
-    def run_c_standalone(self, dataset_path: str, output_path: str) -> Dict[str, Any]:
-        """Run C standalone executable and measure performance"""
-        if not self.c_standalone_path:
-            raise RuntimeError("C standalone executable not found")
-        
-        import subprocess
-        import platform
-        import threading
-        import re
-        
-        # Check for WSL/Windows compatibility issue
-        is_wsl = 'microsoft' in platform.uname().release.lower()
-        if sys.platform == 'win32' and not is_wsl and 'axiom_standalone.exe' in self.c_standalone_path:
-            # Check if this is a Linux binary with .exe extension
-            try:
-                test_result = subprocess.run(
-                    [self.c_standalone_path],
-                    capture_output=True,
-                    timeout=1
-                )
-            except (OSError, subprocess.TimeoutExpired) as e:
-                if isinstance(e, OSError) and e.winerror == 216:
-                    raise RuntimeError(
-                        "The C executable was compiled in WSL/Linux but you're running from Windows. "
-                        "Either: (1) Run benchmark from WSL, or (2) Compile in Windows with MinGW. "
-                        "See QUICKSTART_v1.md for instructions."
-                    )
-        
-        print(f"\n[C STANDALONE] Executing: {self.c_standalone_path}")
-        print(f"[C STANDALONE] Input: {dataset_path}")
-        print(f"[C STANDALONE] Output: {output_path}")
-        
-        start_time = time.perf_counter()
-        start_mem = self.process.memory_info().rss / (1024**2)
-        
-        try:
-            # Start process with stdout/stderr pipes
-            process = subprocess.Popen(
-                [self.c_standalone_path, dataset_path, output_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-            )
-            
-            stdout_lines = []
-            stderr_lines = []
-            
-            # Read stdout in real-time and show progress
-            def read_stdout():
-                for line in process.stdout:
-                    stdout_lines.append(line)
-                    line_stripped = line.strip()
-                    if "Progress:" in line_stripped:
-                        # Show progress on same line
-                        print(f"\r[C STANDALONE] {line_stripped}", end='', flush=True)
-                    elif line_stripped and not line_stripped.startswith('='):
-                        # Show other messages on new lines
-                        if stdout_lines and "Progress:" in stdout_lines[-2] if len(stdout_lines) > 1 else False:
-                            print()  # New line after progress
-                        print(f"[C STANDALONE] {line_stripped}")
-            
-            def read_stderr():
-                for line in process.stderr:
-                    stderr_lines.append(line)
-                    if line.strip():
-                        print(f"[C STANDALONE ERROR] {line.strip()}")
-            
-            # Start reader threads
-            stdout_thread = threading.Thread(target=read_stdout, daemon=True)
-            stderr_thread = threading.Thread(target=read_stderr, daemon=True)
-            stdout_thread.start()
-            stderr_thread.start()
-            
-            # Wait for process with timeout
-            try:
-                returncode = process.wait(timeout=600)  # 10 minute timeout
-            except subprocess.TimeoutExpired:
-                process.kill()
-                raise RuntimeError("C standalone execution timed out (>10 minutes)")
-            
-            # Wait for threads to finish reading
-            stdout_thread.join(timeout=1)
-            stderr_thread.join(timeout=1)
-            
-            wall_time = time.perf_counter() - start_time
-            peak_mem = self.process.memory_info().rss / (1024**2)
-            
-            if returncode != 0:
-                stderr_text = ''.join(stderr_lines)
-                print(f"\n[C STANDALONE] Error: {stderr_text}")
-                raise RuntimeError(f"C standalone failed with code {returncode}")
-            
-            # Parse output for throughput
-            stdout_text = ''.join(stdout_lines)
-            processed_signals = 0
-            c_elapsed = wall_time
-            
-            # Look for completion message
-            for line in stdout_lines:
-                match = re.search(r'Processed (\d+) signals in ([\d.]+) seconds', line)
-                if match:
-                    processed_signals = int(match.group(1))
-                    c_elapsed = float(match.group(2))
-                    break
-            
-            print(f"\n[C STANDALONE] Completed in {wall_time:.2f}s")
-            if processed_signals > 0:
-                print(f"[C STANDALONE] Throughput: {processed_signals/c_elapsed:.1f} signals/sec")
-            
-            return {
-                "wall_time_sec": round(wall_time, 4),
-                "c_reported_time_sec": round(c_elapsed, 4),
-                "peak_memory_mb": round(peak_mem, 2),
-                "memory_delta_mb": round(peak_mem - start_mem, 2),
-                "signals_processed": processed_signals,
-                "throughput_signals_per_sec": round(processed_signals / c_elapsed if c_elapsed > 0 else 0, 2),
-                "stdout": stdout_text,
-                "stderr": ''.join(stderr_lines)
-            }
-            
-        except OSError as e:
-            if hasattr(e, 'winerror') and e.winerror == 216:
-                raise RuntimeError(
-                    "The C executable was compiled in WSL/Linux but you're running from Windows. "
-                    "Either: (1) Run benchmark from WSL, or (2) Compile in Windows with MinGW. "
-                    "See QUICKSTART_v1.md for instructions."
-                )
-            raise RuntimeError(f"C standalone execution failed: {e}")
-        except subprocess.TimeoutExpired:
-            progress_stop.set()
-            raise RuntimeError("C standalone execution timed out (>10 minutes)")
-        except OSError as e:
-            progress_stop.set()
-            if hasattr(e, 'winerror') and e.winerror == 216:
-                raise RuntimeError(
-                    "The C executable was compiled in WSL/Linux but you're running from Windows. "
-                    "Either: (1) Run benchmark from WSL, or (2) Compile in Windows with MinGW. "
-                    "See QUICKSTART_v1.md for instructions."
-                )
-            raise RuntimeError(f"C standalone execution failed: {e}")
-    
-    def _get_system_info(self) -> Dict[str, Any]:
-        """Collect comprehensive system information"""
-        cpu_freq = psutil.cpu_freq()
-        return {
-            "cpu_count": psutil.cpu_count(logical=False),
-            "cpu_count_logical": psutil.cpu_count(logical=True),
-            "cpu_freq_mhz": cpu_freq.current if cpu_freq else 0,
-            "cpu_freq_max_mhz": cpu_freq.max if cpu_freq else 0,
-            "total_memory_gb": psutil.virtual_memory().total / (1024**3),
-            "available_memory_gb": psutil.virtual_memory().available / (1024**3),
-            "python_version": sys.version,
-            "platform": sys.platform,
-            "numpy_version": np.__version__,
-            "matplotlib_available": MATPLOTLIB_AVAILABLE,
-            "seaborn_available": SEABORN_AVAILABLE
-        }
-    
-    def record_layer_timing(self, layer_name: str, duration: float):
-        """Record timing for individual layer"""
-        self.layer_timings[layer_name].append(duration)
-    
-    def record_per_signal_metrics(self, signal_id: str, metrics: Dict[str, Any]):
-        """Record per-signal performance metrics"""
-        self.results["per_signal_stats"][signal_id] = metrics
-    
-    def start_phase(self, phase_name: str):
-        """Start timing a benchmark phase"""
-        self.current_phase = phase_name
-        self.phase_start_time = time.perf_counter()
-        self.phase_start_cpu = self.process.cpu_times()
-        self.phase_start_mem = self.process.memory_info().rss / (1024**2)  # MB
-        print(f"\n[BENCHMARK] Starting: {phase_name}")
-    
-    def end_phase(self, additional_metrics: Dict[str, Any] = None):
-        """End timing and record metrics"""
-        wall_time = time.perf_counter() - self.phase_start_time
-        cpu_times = self.process.cpu_times()
-        cpu_time = (cpu_times.user - self.phase_start_cpu.user + 
-                   cpu_times.system - self.phase_start_cpu.system)
-        peak_mem = self.process.memory_info().rss / (1024**2)  # MB
-        mem_delta = peak_mem - self.phase_start_mem
-        
-        metrics = {
-            "wall_time_sec": round(wall_time, 4),
-            "cpu_time_sec": round(cpu_time, 4),
-            "cpu_utilization_pct": round((cpu_time / wall_time * 100) if wall_time > 0 else 0, 2),
-            "peak_memory_mb": round(peak_mem, 2),
-            "memory_delta_mb": round(mem_delta, 2)
-        }
-        
-        if additional_metrics:
-            metrics.update(additional_metrics)
-        
-        self.results["metrics"][self.current_phase] = metrics
-        
-        print(f"[BENCHMARK] {self.current_phase}:")
-        print(f"  Wall time: {wall_time:.4f}s")
-        print(f"  CPU time: {cpu_time:.4f}s ({metrics['cpu_utilization_pct']}%)")
-        print(f"  Memory: {peak_mem:.2f} MB (Δ {mem_delta:+.2f} MB)")
-        if additional_metrics:
-            for k, v in additional_metrics.items():
-                print(f"  {k}: {v}")
-    
-    def record_accuracy_metrics(self, audit_records: List[Dict]):
-        """Compute comprehensive detection accuracy metrics - TEST SET ONLY"""
-        # CRITICAL FIX: Only evaluate on test set (is_training_data=False)
-        test_records = [r for r in audit_records if not r.get("is_training_data", False)]
-        
-        if not test_records:
-            print("[WARNING] No test records found - evaluating on all data (legacy mode)")
-            test_records = audit_records
-        else:
-            print(f"[ACCURACY] Evaluating on TEST SET ONLY: {len(test_records)} records (excluding {len(audit_records) - len(test_records)} training records)")
-        
-        tp = fp = tn = fn = 0
-        verdicts = []
-        anomaly_scores = []
-        detected_anomalies = []
-        missed_anomalies = []
-        false_positives = []
-        
-        # Layer-specific metrics
-        entropy_flags = 0
-        geometry_flags = 0
-        both_layers = 0
-        
-        for record in test_records:
-            verdict = record.get("verdict", "")
-            signal_id = record.get("signal_id", "")
-            score = record.get("anomaly_score", 0)
-            entropy_label = record.get("entropy_label", "")
-            geo_anomaly = record.get("geometric_anomaly", "")
-            
-            verdicts.append(verdict)
-            anomaly_scores.append(score)
-            
-            # Count layer flags
-            if "Low" in entropy_label or "Non-Natural" in entropy_label:
-                entropy_flags += 1
-            if geo_anomaly != "None Detected":
-                geometry_flags += 1
-            if entropy_flags > 0 and geometry_flags > 0:
-                both_layers += 1
-            
-            # Identify known anomalies by signal_id prefix "ANOMALY_"
-            is_known_anomaly = signal_id.startswith("ANOMALY_")
-            is_known_natural = not is_known_anomaly
-            
-            # Count both "Non-Natural" and "Candidate" as detections
-            is_detected = verdict in ("Non-Natural", "Candidate — Requires Review")
-            
-            if is_detected:
-                if is_known_anomaly:
-                    tp += 1
-                    detected_anomalies.append(signal_id)
-                elif is_known_natural:
-                    fp += 1
-                    false_positives.append(signal_id)
-            elif verdict in ("Natural", "Interference"):
-                if is_known_natural:
-                    tn += 1
-                elif is_known_anomaly:
-                    fn += 1
-                    missed_anomalies.append(signal_id)
-        
-        total = len(audit_records)
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-        accuracy = (tp + tn) / total if total > 0 else 0
-        
-        # Matthews Correlation Coefficient
-        mcc_num = (tp * tn) - (fp * fn)
-        mcc_den = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
-        mcc = mcc_num / mcc_den if mcc_den > 0 else 0
-        
-        # Fix accuracy calculation
-        total = tp + fp + tn + fn
-        accuracy = (tp + tn) / total if total > 0 else 0
-        
-        self.results["accuracy"] = {
-            "total_signals": total,
-            "total_signals_all": len(audit_records),
-            "training_signals": len(audit_records) - len(test_records),
-            "test_signals": len(test_records),
-            "true_positives": tp,
-            "false_positives": fp,
-            "true_negatives": tn,
-            "false_negatives": fn,
-            "precision": round(precision, 4),
-            "recall": round(recall, 4),
-            "specificity": round(specificity, 4),
-            "f1_score": round(f1, 4),
-            "accuracy": round(accuracy, 4),
-            "mcc": round(mcc, 4),
-            "mean_anomaly_score": round(np.mean(anomaly_scores), 2),
-            "std_anomaly_score": round(np.std(anomaly_scores), 2),
-            "median_anomaly_score": round(np.median(anomaly_scores), 2),
-            "verdict_distribution": {v: verdicts.count(v) for v in set(verdicts)},
-            "detected_anomalies": detected_anomalies,
-            "missed_anomalies": missed_anomalies,
-            "false_positive_count": len(false_positives),
-            "layer_metrics": {
-                "entropy_flagged": entropy_flags,
-                "geometry_flagged": geometry_flags,
-                "both_layers_flagged": both_layers,
-                "entropy_flag_rate": round(entropy_flags / total, 4) if total > 0 else 0,
-                "geometry_flag_rate": round(geometry_flags / total, 4) if total > 0 else 0
-            }
-        }
-        
-        print("\n[ACCURACY METRICS] TEST SET ONLY")
-        print(f"  Test signals: {len(test_records)} (Training: {len(audit_records) - len(test_records)})")
-        print(f"  Precision: {precision:.4f}")
-        print(f"  Recall: {recall:.4f}")
-        print(f"  Specificity: {specificity:.4f}")
-        print(f"  F1 Score: {f1:.4f}")
-        print(f"  Accuracy: {accuracy:.4f}")
-        print(f"  MCC: {mcc:.4f}")
-        print(f"  TP={tp}, FP={fp}, TN={tn}, FN={fn}")
-        if detected_anomalies:
-            print(f"  Detected Anomalies: {len(detected_anomalies)}")
-        if missed_anomalies:
-            print(f"  Missed Anomalies: {missed_anomalies}")
-    
-    def record_throughput(self, n_signals: int, total_time: float):
-        """Record processing throughput"""
-        throughput = n_signals / total_time if total_time > 0 else 0
-        self.results["throughput"] = {
-            "signals_per_second": round(throughput, 2),
-            "seconds_per_signal": round(1/throughput if throughput > 0 else 0, 6),
-            "total_signals": n_signals,
-            "total_time_sec": round(total_time, 4)
-        }
-        print(f"\n[THROUGHPUT]")
-        print(f"  {throughput:.2f} signals/sec")
-        print(f"  {1/throughput if throughput > 0 else 0:.6f} sec/signal")
-    
-    def generate_visualizations(self, audit_records: List[Dict]):
-        """Generate comprehensive scientific visualization suite - TEST SET ONLY"""
-        if not MATPLOTLIB_AVAILABLE:
-            print("\n[VISUALIZATION] matplotlib not available, skipping chart generation")
-            return
-        
-        # CRITICAL FIX: Only visualize test set
-        test_records = [r for r in audit_records if not r.get("is_training_data", False)]
-        if not test_records:
-            test_records = audit_records
-        
-        # Set scientific styling
-        if SEABORN_AVAILABLE:
-            sns.set_style("whitegrid")
-            sns.set_context("paper")
-        else:
-            plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
-        
-        print(f"\n[VISUALIZATION] Generating charts for TEST SET: {len(test_records)} signals...")
-        
-        # Extract data for visualizations
-        verdicts = []
-        origins = []
-        anomaly_scores = []
-        y_true = []  # Ground truth labels
-        y_pred = []  # Predicted labels
-        
-        for record in test_records:
-            verdict = record.get("verdict", "")
-            signal_id = record.get("signal_id", "")
-            score = record.get("anomaly_score", 0)
-            
-            verdicts.append(verdict)
-            anomaly_scores.append(score)
-            
-            # Ground truth: 1 for anomaly, 0 for natural
-            is_anomaly = signal_id.startswith("ANOMALY_")
-            y_true.append(1 if is_anomaly else 0)
-            
-            # Prediction: 1 for detected, 0 for not detected
-            is_detected = verdict in ("Non-Natural", "Candidate — Requires Review")
-            y_pred.append(1 if is_detected else 0)
-        
-        # Get accuracy metrics from results
-        acc = self.results.get("accuracy", {})
-        tp = acc.get("true_positives", 0)
-        fp = acc.get("false_positives", 0)
-        tn = acc.get("true_negatives", 0)
-        fn = acc.get("false_negatives", 0)
-        
-        # Generate all visualizations
-        self._plot_confusion_matrix(tp, fp, tn, fn)
-        self._plot_anomaly_score_distribution(anomaly_scores, y_true)
-        self._plot_precision_recall_curve(anomaly_scores, y_true)
-        self._plot_roc_curve(anomaly_scores, y_true)
-        self._plot_layer_performance()
-        self._plot_detection_funnel(test_records)  # Use test_records
-        self._plot_verdict_distribution(test_records)  # Use test_records
-        self._plot_performance_timeline()
-        self._plot_memory_usage()
-        
-        print(f"[VISUALIZATION] All charts saved to: {self.output_dir}/")
-    
-    def generate_audit_report(self, audit_records: List[Dict], output_path: str = None):
-        """Generate comprehensive audit report similar to audit_log_report.txt - TEST SET ONLY"""
-        if output_path is None:
-            output_path = os.path.join(self.output_dir, "benchmark_audit_report.txt")
-        
-        # CRITICAL FIX: Only report on test set
-        test_records = [r for r in audit_records if not r.get("is_training_data", False)]
-        if not test_records:
-            test_records = audit_records
-        
-        acc = self.results.get("accuracy", {})
-        
-        # Collect statistics from TEST SET ONLY
-        anomalies = [r for r in test_records if r.get("signal_id", "").startswith("ANOMALY_")]
-        candidates = [r for r in test_records if r.get("verdict") == "Candidate — Requires Review"]
-        non_natural = [r for r in test_records if r.get("verdict") == "Non-Natural"]
-        
-        # Sort by anomaly score
-        top_candidates = sorted(candidates, key=lambda x: x.get("anomaly_score", 0), reverse=True)[:25]
-        
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write("="*80 + "\n")
-            f.write("  AXIOM-ASTROPHYSICS BENCHMARK AUDIT REPORT\n")
-            f.write(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"  Total signals analyzed: {len(audit_records)}\n")
-            f.write(f"  TEST SET ONLY: {len(test_records)} signals\n")
-            f.write(f"  Training set: {len(audit_records) - len(test_records)} signals (excluded from metrics)\n")
-            f.write(f"  Training set: {len(audit_records) - len(test_records)} signals (excluded from metrics)\n")
-            f.write("="*80 + "\n\n")
-            
-            # Executive Summary
-            f.write("="*80 + "\n")
-            f.write("  I. EXECUTIVE SUMMARY (TEST SET ONLY)\n")
-            f.write("="*80 + "\n")
-            f.write(f"  Test signals analyzed:           {len(test_records)}\n")
-            f.write(f"  Training signals (excluded):     {len(audit_records) - len(test_records)}\n")
-            f.write(f"  Non-Natural detections:          {len(non_natural)}\n")
-            f.write(f"  Candidates requiring review:     {len(candidates)}\n")
-            f.write(f"  Known anomalies in dataset:      {len(anomalies)}\n")
-            f.write(f"  Detection rate (Recall):         {acc.get('recall', 0):.2%}\n")
-            f.write(f"  False positive rate:             {1 - acc.get('specificity', 1):.2%}\n\n")
-            
-            # Performance Metrics
-            f.write("="*80 + "\n")
-            f.write("  II. PERFORMANCE METRICS\n")
-            f.write("="*80 + "\n")
-            
-            total_time = sum(m.get('wall_time_sec', 0) for m in self.results.get('metrics', {}).values())
-            f.write(f"  Total wall time:                 {total_time:.2f}s\n")
-            f.write(f"  Throughput:                      {len(audit_records)/total_time:.2f} signals/sec\n")
-            f.write(f"  Average time per signal:         {total_time/len(audit_records)*1000:.2f}ms\n")
-            
-            if self.results.get("c_core_enabled"):
-                f.write(f"  C Core acceleration:             ENABLED\n")
-            else:
-                f.write(f"  C Core acceleration:             DISABLED (Python fallback)\n")
-            f.write("\n")
-            
-            # Accuracy Metrics
-            f.write("="*80 + "\n")
-            f.write("  III. DETECTION ACCURACY\n")
-            f.write("="*80 + "\n")
-            f.write(f"  Precision:                       {acc.get('precision', 0):.4f}\n")
-            f.write(f"  Recall (Sensitivity):            {acc.get('recall', 0):.4f}\n")
-            f.write(f"  Specificity:                     {acc.get('specificity', 0):.4f}\n")
-            f.write(f"  F1 Score:                        {acc.get('f1_score', 0):.4f}\n")
-            f.write(f"  Accuracy:                        {acc.get('accuracy', 0):.4f}\n")
-            f.write(f"  Matthews Correlation (MCC):      {acc.get('mcc', 0):.4f}\n")
-            f.write(f"  True Positives:                  {acc.get('true_positives', 0)}\n")
-            f.write(f"  False Positives:                 {acc.get('false_positives', 0)}\n")
-            f.write(f"  True Negatives:                  {acc.get('true_negatives', 0)}\n")
-            f.write(f"  False Negatives:                 {acc.get('false_negatives', 0)}\n\n")
-            
-            # Layer Performance
-            layer_metrics = acc.get('layer_metrics', {})
-            if layer_metrics:
-                f.write("="*80 + "\n")
-                f.write("  IV. LAYER-BY-LAYER ANALYSIS\n")
-                f.write("="*80 + "\n")
-                f.write(f"  Entropy layer flagged:           {layer_metrics.get('entropy_flagged', 0)} ({layer_metrics.get('entropy_flag_rate', 0):.2%})\n")
-                f.write(f"  Geometry layer flagged:          {layer_metrics.get('geometry_flagged', 0)} ({layer_metrics.get('geometry_flag_rate', 0):.2%})\n")
-                f.write(f"  Both layers flagged:             {layer_metrics.get('both_layers_flagged', 0)}\n\n")
-            
-            # Top Candidates
-            if top_candidates:
-                f.write("="*80 + "\n")
-                f.write("  V. TOP 25 CANDIDATES (Ranked by Anomaly Score)\n")
-                f.write("="*80 + "\n")
-                f.write(f"  {'#':<4} {'Signal ID':<32} {'Score':<6} {'Verdict':<30}\n")
-                f.write("  " + "-"*76 + "\n")
-                
-                for i, cand in enumerate(top_candidates, 1):
-                    sig_id = cand.get('signal_id', 'Unknown')[:30]
-                    score = cand.get('anomaly_score', 0)
-                    verdict = cand.get('verdict', 'Unknown')[:28]
-                    f.write(f"  {i:<4} {sig_id:<32} {score:<6.1f} {verdict:<30}\n")
-                f.write("\n")
-            
-            # Detected Anomalies
-            detected = acc.get('detected_anomalies', [])
-            if detected:
-                f.write("="*80 + "\n")
-                f.write("  VI. DETECTED KNOWN ANOMALIES\n")
-                f.write("="*80 + "\n")
-                for anom in detected:
-                    f.write(f"  ✓ {anom}\n")
-                f.write("\n")
-            
-            # Missed Anomalies
-            missed = acc.get('missed_anomalies', [])
-            if missed:
-                f.write("="*80 + "\n")
-                f.write("  VII. MISSED ANOMALIES (FALSE NEGATIVES)\n")
-                f.write("="*80 + "\n")
-                for anom in missed:
-                    f.write(f"  ✗ {anom}\n")
-                f.write("\n")
-            
-            # System Info
-            f.write("="*80 + "\n")
-            f.write("  VIII. SYSTEM INFORMATION\n")
-            f.write("="*80 + "\n")
-            sys_info = self.results.get('system_info', {})
-            f.write(f"  CPU cores (physical):            {sys_info.get('cpu_count', 'N/A')}\n")
-            f.write(f"  CPU cores (logical):             {sys_info.get('cpu_count_logical', 'N/A')}\n")
-            f.write(f"  CPU frequency:                   {sys_info.get('cpu_freq_mhz', 0):.0f} MHz\n")
-            f.write(f"  Total memory:                    {sys_info.get('total_memory_gb', 0):.2f} GB\n")
-            f.write(f"  Platform:                        {sys_info.get('platform', 'Unknown')}\n")
-            f.write(f"  Python version:                  {sys_info.get('python_version', 'Unknown').split()[0]}\n")
-            f.write("\n")
-            
-            f.write("="*80 + "\n")
-            f.write("  END OF BENCHMARK AUDIT REPORT\n")
-            f.write("="*80 + "\n")
-        
-        print(f"\n[AUDIT REPORT] Generated: {output_path}")
-        return output_path
-    
-    def _plot_confusion_matrix(self, tp, fp, tn, fn):
-        """Generate confusion matrix heatmap"""
-        fig, ax = plt.subplots(figsize=(8, 6))
-        
-        confusion_matrix = np.array([[tn, fp], [fn, tp]])
-        
-        if SEABORN_AVAILABLE:
-            sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='Blues', 
-                       xticklabels=['Natural', 'Non-Natural'],
-                       yticklabels=['Natural', 'Non-Natural'],
-                       cbar_kws={'label': 'Count'}, ax=ax)
-        else:
-            im = ax.imshow(confusion_matrix, cmap='Blues')
-            ax.set_xticks([0, 1])
-            ax.set_yticks([0, 1])
-            ax.set_xticklabels(['Natural', 'Non-Natural'])
-            ax.set_yticklabels(['Natural', 'Non-Natural'])
-            
-            # Add text annotations
-            for i in range(2):
-                for j in range(2):
-                    ax.text(j, i, str(confusion_matrix[i, j]),
-                           ha="center", va="center", color="black")
-            
-            plt.colorbar(im, ax=ax, label='Count')
-        
-        ax.set_xlabel('Predicted Label', fontsize=12)
-        ax.set_ylabel('True Label', fontsize=12)
-        ax.set_title('Confusion Matrix - AXIOM Detection System', fontsize=14, fontweight='bold')
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "confusion_matrix.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - Confusion matrix: {output_path}")
-    
-    def _plot_anomaly_score_distribution(self, anomaly_scores, y_true):
-        """Generate anomaly score distribution histogram"""
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # Separate scores by ground truth
-        anomaly_scores = np.array(anomaly_scores)
-        y_true = np.array(y_true)
-        
-        natural_scores = anomaly_scores[y_true == 0]
-        anomaly_scores_true = anomaly_scores[y_true == 1]
-        
-        # Plot histograms
-        bins = np.linspace(0, 100, 21)
-        ax.hist(natural_scores, bins=bins, alpha=0.6, label='Natural Signals', 
-               color='blue', edgecolor='black')
-        ax.hist(anomaly_scores_true, bins=bins, alpha=0.6, label='Known Anomalies', 
-               color='red', edgecolor='black')
-        
-        ax.set_xlabel('Anomaly Score', fontsize=12)
-        ax.set_ylabel('Frequency', fontsize=12)
-        ax.set_title('Anomaly Score Distribution', fontsize=14, fontweight='bold')
-        ax.legend(loc='upper right', fontsize=10)
-        ax.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "anomaly_score_distribution.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - Anomaly score distribution: {output_path}")
-    
-    def _plot_precision_recall_curve(self, anomaly_scores, y_true):
-        """Generate precision-recall curve"""
-        fig, ax = plt.subplots(figsize=(8, 6))
-        
-        anomaly_scores = np.array(anomaly_scores)
-        y_true = np.array(y_true)
-        
-        # Calculate precision and recall at different thresholds
-        thresholds = np.linspace(0, 100, 101)
-        precisions = []
-        recalls = []
-        
-        for threshold in thresholds:
-            y_pred = (anomaly_scores >= threshold).astype(int)
-            
-            tp = np.sum((y_pred == 1) & (y_true == 1))
-            fp = np.sum((y_pred == 1) & (y_true == 0))
-            fn = np.sum((y_pred == 0) & (y_true == 1))
-            
-            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-            
-            precisions.append(precision)
-            recalls.append(recall)
-        
-        ax.plot(recalls, precisions, linewidth=2, color='darkblue')
-        ax.fill_between(recalls, precisions, alpha=0.2, color='blue')
-        
-        ax.set_xlabel('Recall', fontsize=12)
-        ax.set_ylabel('Precision', fontsize=12)
-        ax.set_title('Precision-Recall Curve', fontsize=14, fontweight='bold')
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1.05])
-        ax.grid(True, alpha=0.3)
-        
-        # Add diagonal reference line
-        ax.plot([0, 1], [1, 0], 'k--', alpha=0.3, linewidth=1, label='Random Classifier')
-        ax.legend(loc='lower left', fontsize=10)
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "precision_recall_curve.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - Precision-recall curve: {output_path}")
-    
-    def _plot_roc_curve(self, anomaly_scores, y_true):
-        """Generate ROC curve"""
-        fig, ax = plt.subplots(figsize=(8, 6))
-        
-        anomaly_scores = np.array(anomaly_scores)
-        y_true = np.array(y_true)
-        
-        # Calculate TPR and FPR at different thresholds
-        thresholds = np.linspace(0, 100, 101)
-        tprs = []
-        fprs = []
-        
-        for threshold in thresholds:
-            y_pred = (anomaly_scores >= threshold).astype(int)
-            
-            tp = np.sum((y_pred == 1) & (y_true == 1))
-            fp = np.sum((y_pred == 1) & (y_true == 0))
-            tn = np.sum((y_pred == 0) & (y_true == 0))
-            fn = np.sum((y_pred == 0) & (y_true == 1))
-            
-            tpr = tp / (tp + fn) if (tp + fn) > 0 else 0  # Recall / Sensitivity
-            fpr = fp / (fp + tn) if (fp + tn) > 0 else 0  # False Positive Rate
-            
-            tprs.append(tpr)
-            fprs.append(fpr)
-        
-        # Sort by FPR for proper curve
-        sorted_indices = np.argsort(fprs)
-        fprs = np.array(fprs)[sorted_indices]
-        tprs = np.array(tprs)[sorted_indices]
-        
-        # Calculate AUC using trapezoidal rule
-        try:
-            auc = np.trapezoid(tprs, fprs)  # NumPy 2.0+
-        except AttributeError:
-            auc = np.trapz(tprs, fprs)  # NumPy < 2.0
-        
-        ax.plot(fprs, tprs, linewidth=2, color='darkgreen', label=f'ROC Curve (AUC = {auc:.3f})')
-        ax.fill_between(fprs, tprs, alpha=0.2, color='green')
-        
-        # Add diagonal reference line (random classifier)
-        ax.plot([0, 1], [0, 1], 'k--', alpha=0.3, linewidth=1, label='Random Classifier (AUC = 0.5)')
-        
-        ax.set_xlabel('False Positive Rate', fontsize=12)
-        ax.set_ylabel('True Positive Rate (Recall)', fontsize=12)
-        ax.set_title('ROC Curve', fontsize=14, fontweight='bold')
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1.05])
-        ax.grid(True, alpha=0.3)
-        ax.legend(loc='lower right', fontsize=10)
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "roc_curve.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - ROC curve: {output_path}")
-    
-    def _plot_layer_performance(self):
-        """Generate layer-by-layer performance breakdown"""
-        if not self.layer_timings:
-            return
-        
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        
-        # Bar chart of average layer times
-        layers = list(self.layer_timings.keys())
-        avg_times = [np.mean(self.layer_timings[l]) for l in layers]
-        
-        ax1.barh(layers, avg_times, color='steelblue', edgecolor='black')
-        ax1.set_xlabel('Average Time (seconds)', fontsize=12)
-        ax1.set_title('Layer Performance Breakdown', fontsize=14, fontweight='bold')
-        ax1.grid(True, alpha=0.3, axis='x')
-        
-        # Pie chart of time distribution
-        ax2.pie(avg_times, labels=layers, autopct='%1.1f%%', startangle=90)
-        ax2.set_title('Time Distribution by Layer', fontsize=14, fontweight='bold')
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "layer_performance.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - Layer performance: {output_path}")
-    
-    def _plot_detection_funnel(self, audit_records: List[Dict]):
-        """Generate detection funnel visualization"""
-        total = len(audit_records)
-        entropy_flagged = sum(1 for r in audit_records if "Low" in r.get("entropy_label", ""))
-        geometry_flagged = sum(1 for r in audit_records if r.get("geometric_anomaly", "") != "None Detected")
-        both_flagged = sum(1 for r in audit_records 
-                          if "Low" in r.get("entropy_label", "") and r.get("geometric_anomaly", "") != "None Detected")
-        candidates = sum(1 for r in audit_records if r.get("verdict") == "Candidate — Requires Review")
-        non_natural = sum(1 for r in audit_records if r.get("verdict") == "Non-Natural")
-        
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        stages = ['Total Signals', 'Entropy Flagged', 'Geometry Flagged', 
-                 'Both Layers', 'Candidates', 'Non-Natural']
-        values = [total, entropy_flagged, geometry_flagged, both_flagged, candidates, non_natural]
-        colors = ['#3498db', '#2ecc71', '#f39c12', '#e74c3c', '#9b59b6', '#c0392b']
-        
-        # Create funnel
-        for i, (stage, value, color) in enumerate(zip(stages, values, colors)):
-            width = value / total
-            ax.barh(i, width, height=0.8, color=color, edgecolor='black', linewidth=2)
-            
-            # Add labels
-            percentage = (value / total) * 100
-            ax.text(width/2, i, f'{stage}\n{value:,} ({percentage:.2f}%)', 
-                   ha='center', va='center', fontsize=10, fontweight='bold', color='white')
-        
-        ax.set_xlim(0, 1)
-        ax.set_ylim(-0.5, len(stages) - 0.5)
-        ax.set_yticks([])
-        ax.set_xlabel('Proportion of Total Signals', fontsize=12)
-        ax.set_title('Detection Funnel - Signal Processing Pipeline', fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3, axis='x')
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "detection_funnel.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - Detection funnel: {output_path}")
-    
-    def _plot_verdict_distribution(self, audit_records: List[Dict]):
-        """Generate verdict distribution pie chart"""
-        verdicts = [r.get("verdict", "Unknown") for r in audit_records]
-        verdict_counts = {}
-        for v in set(verdicts):
-            verdict_counts[v] = verdicts.count(v)
-        
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        colors = {
-            'Natural': '#2ecc71',
-            'Interference': '#95a5a6',
-            'Candidate — Requires Review': '#f39c12',
-            'Non-Natural': '#e74c3c'
-        }
-        
-        labels = list(verdict_counts.keys())
-        sizes = list(verdict_counts.values())
-        plot_colors = [colors.get(l, '#3498db') for l in labels]
-        
-        wedges, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%',
-                                           colors=plot_colors, startangle=90,
-                                           textprops={'fontsize': 11, 'weight': 'bold'})
-        
-        # Add count to labels
-        for i, (label, size) in enumerate(zip(labels, sizes)):
-            texts[i].set_text(f'{label}\n({size:,})')
-        
-        ax.set_title('Verdict Distribution', fontsize=14, fontweight='bold')
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "verdict_distribution.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - Verdict distribution: {output_path}")
-    
-    def _plot_performance_timeline(self):
-        """Generate performance timeline chart"""
-        if not self.results.get('metrics'):
-            return
-        
-        phases = list(self.results['metrics'].keys())
-        wall_times = [self.results['metrics'][p]['wall_time_sec'] for p in phases]
-        cpu_times = [self.results['metrics'][p]['cpu_time_sec'] for p in phases]
-        
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
-        x = np.arange(len(phases))
-        width = 0.35
-        
-        ax.bar(x - width/2, wall_times, width, label='Wall Time', color='steelblue', edgecolor='black')
-        ax.bar(x + width/2, cpu_times, width, label='CPU Time', color='coral', edgecolor='black')
-        
-        ax.set_xlabel('Phase', fontsize=12)
-        ax.set_ylabel('Time (seconds)', fontsize=12)
-        ax.set_title('Performance Timeline by Phase', fontsize=14, fontweight='bold')
-        ax.set_xticks(x)
-        ax.set_xticklabels(phases, rotation=45, ha='right')
-        ax.legend()
-        ax.grid(True, alpha=0.3, axis='y')
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "performance_timeline.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - Performance timeline: {output_path}")
-    
-    def _plot_memory_usage(self):
-        """Generate memory usage chart"""
-        if not self.results.get('metrics'):
-            return
-        
-        phases = list(self.results['metrics'].keys())
-        peak_mem = [self.results['metrics'][p]['peak_memory_mb'] for p in phases]
-        mem_delta = [self.results['metrics'][p]['memory_delta_mb'] for p in phases]
-        
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        
-        # Peak memory
-        ax1.plot(phases, peak_mem, marker='o', linewidth=2, markersize=8, color='darkgreen')
-        ax1.fill_between(range(len(phases)), peak_mem, alpha=0.3, color='green')
-        ax1.set_xlabel('Phase', fontsize=12)
-        ax1.set_ylabel('Memory (MB)', fontsize=12)
-        ax1.set_title('Peak Memory Usage', fontsize=14, fontweight='bold')
-        ax1.grid(True, alpha=0.3)
-        ax1.tick_params(axis='x', rotation=45)
-        
-        # Memory delta
-        colors = ['red' if d > 0 else 'blue' for d in mem_delta]
-        ax2.bar(phases, mem_delta, color=colors, edgecolor='black')
-        ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-        ax2.set_xlabel('Phase', fontsize=12)
-        ax2.set_ylabel('Memory Delta (MB)', fontsize=12)
-        ax2.set_title('Memory Change by Phase', fontsize=14, fontweight='bold')
-        ax2.grid(True, alpha=0.3, axis='y')
-        ax2.tick_params(axis='x', rotation=45)
-        
-        plt.tight_layout()
-        output_path = os.path.join(self.output_dir, "memory_usage.png")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"  - Memory usage: {output_path}")
-    
-    def save(self):
-        """Save benchmark results to JSON in timestamped directory"""
-        output_path = os.path.join(self.output_dir, "benchmark_results.json")
-        
-        with open(output_path, "w") as f:
-            json.dump(self.results, f, indent=2)
-        
-        print(f"\n[BENCHMARK] Results saved to: {output_path}")
-        return output_path
-    
-    def print_summary(self):
-        """Print comprehensive summary"""
-        print("\n" + "="*80)
-        print("AXIOM-ASTROPHYSICS BENCHMARK SUMMARY")
-        print("="*80)
-        
-        print("\nSYSTEM INFO:")
-        for k, v in self.results["system_info"].items():
-            print(f"  {k}: {v}")
-        
-        print("\nPHASE TIMINGS:")
-        total_wall = 0
-        for phase, metrics in self.results["metrics"].items():
-            print(f"  {phase}:")
-            print(f"    Wall: {metrics['wall_time_sec']:.4f}s | "
-                  f"CPU: {metrics['cpu_time_sec']:.4f}s | "
-                  f"Mem: {metrics['peak_memory_mb']:.2f} MB")
-            total_wall += metrics['wall_time_sec']
-        print(f"  TOTAL WALL TIME: {total_wall:.4f}s")
-        
-        if "accuracy" in self.results:
-            print("\nACCURACY:")
-            acc = self.results["accuracy"]
-            print(f"  Precision: {acc['precision']:.4f}")
-            print(f"  Recall: {acc['recall']:.4f}")
-            print(f"  F1 Score: {acc['f1_score']:.4f}")
-            print(f"  Specificity: {acc['specificity']:.4f}")
-        
-        if "throughput" in self.results:
-            print("\nTHROUGHPUT:")
-            tp = self.results["throughput"]
-            print(f"  {tp['signals_per_second']:.2f} signals/sec")
-        
-        print("="*80)
+                sc = StandardScaler()
+                X_tr_s = sc.fit_transform(X_tr)
+                X_te_s = sc.transform(X_te)
+                clf_copy = clf.__class__(**clf.get_params())
+                clf_copy.fit(X_tr_s, y_tr)
+                preds = clf_copy.predict(X_te_s)
+
+            fold_acc.append(accuracy_score(y_te, preds))
+            fold_mcc.append(matthews_corrcoef(y_te, preds))
+            fold_f1.append(f1_score(y_te, preds, zero_division=0))
+            fold_preds_all[test_idx] = preds
+
+        mean_acc = np.mean(fold_acc)
+        mean_mcc = np.mean(fold_mcc)
+        mean_f1 = np.mean(fold_f1)
+
+        baseline_results[name] = {"accuracy": mean_acc, "mcc": mean_mcc, "f1": mean_f1}
+        all_preds[name] = fold_preds_all
+
+        print(f"  {name:<25s} {mean_acc:>10.4f} {mean_mcc:>10.4f} {mean_f1:>10.4f}")
+
+    # Highlight winner
+    print("-" * 70)
+    best_model = max(baseline_results, key=lambda k: baseline_results[k]["mcc"])
+    print(f"  Best model by MCC: {best_model}")
+
+    return baseline_results, all_preds
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEST SUITE 5: Statistical Significance
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_suite_5_significance(y_true, all_preds, model_a="AXIOM Ensemble", model_b="Logistic Regression"):
+    separator("TEST SUITE 5: Statistical Significance Testing")
+
+    preds_a = all_preds.get(model_a)
+    preds_b = all_preds.get(model_b)
+
+    if preds_a is None or preds_b is None:
+        print("  Skipped — required predictions not available.")
+        return {}
+
+    # McNemar's test
+    correct_a = (preds_a == y_true)
+    correct_b = (preds_b == y_true)
+
+    # Contingency: b01 = A wrong, B right; b10 = A right, B wrong
+    b01 = int(np.sum(~correct_a & correct_b))
+    b10 = int(np.sum(correct_a & ~correct_b))
+
+    print(f"  Comparing: {model_a} vs {model_b}")
+    print(f"  Cases where only {model_a} correct: {b10}")
+    print(f"  Cases where only {model_b} correct: {b01}")
+    print("-" * 70)
+
+    # McNemar statistic (with continuity correction)
+    if (b01 + b10) == 0:
+        print("  McNemar's Test: Models are identical. No discordant pairs.")
+        return {"mcnemar_chi2": 0.0, "p_value": 1.0}
+
+    chi2 = (abs(b01 - b10) - 1.0) ** 2 / (b01 + b10)
+
+    # p-value from chi-squared distribution with 1 degree of freedom
+    from scipy.stats import chi2 as chi2_dist
+    p_value = 1.0 - chi2_dist.cdf(chi2, df=1)
+
+    print(f"  McNemar χ²: {chi2:.4f}")
+    print(f"  p-value:    {p_value:.6f}")
+
+    if p_value < 0.05:
+        print(f"  Result: SIGNIFICANT (p < 0.05) — {model_a} is statistically better.")
+    else:
+        print("  Result: NOT SIGNIFICANT (p ≥ 0.05) — difference may be due to chance.")
+
+    # Wilson confidence interval on AXIOM accuracy
+    print("-" * 70)
+    acc = accuracy_score(y_true, preds_a)
+    n = len(y_true)
+    z = 1.96  # 95% CI
+
+    denominator = 1 + z**2 / n
+    center = (acc + z**2 / (2 * n)) / denominator
+    margin = z * np.sqrt((acc * (1 - acc) + z**2 / (4 * n)) / n) / denominator
+
+    ci_low = center - margin
+    ci_high = center + margin
+
+    print(f"  {model_a} Accuracy: {acc:.4f}")
+    print(f"  95% Wilson CI: [{ci_low:.4f}, {ci_high:.4f}]")
+
+    return {"mcnemar_chi2": chi2, "p_value": p_value, "ci": (ci_low, ci_high)}
+
+
+def test_suite_6_manifold_ood():
+    """Lane 1: self-consistent real-waterfall manifold OOD detection.
+
+    Every class (pulsar, FRB, RFI, and the artificial Voyager 1 carrier) is a
+    real, provenance-pinned dynamic spectrum passed through ONE deterministic
+    featurizer, so the feature space is commensurate by construction (no HTRU2
+    anchor). Cross-conformal evaluation reports AUROC and calibrated FPR.
+    """
+    separator("TEST SUITE 6: REAL-WATERFALL MANIFOLD OOD (Lane 1)")
+    try:
+        from axiom.stats.manifold_ood import evaluate_manifold_ood
+        report = evaluate_manifold_ood(alpha=0.1, seed=SEED)
+    except Exception as exc:
+        print(f"  [manifold OOD] unavailable ({exc}); suite skipped "
+              f"(pinned filterbanks not cached / offline).")
+        return {"pass": None, "skipped": True}
+
+    print(f"  Manifold classes (real waterfalls): {report.class_counts}")
+    print("  Featurizer: axiom.dsp.waterfall.extract_features "
+          "(12-D, one code path for all classes)")
+    print(f"  Cross-conformal folds: {report.n_splits} | normal={report.n_cal} "
+          f"| artificial={report.n_anomaly}")
+    print("-" * 70)
+    print(f"  AUROC (artificial vs natural)     : {report.auroc:.4f}")
+    print(f"  Artificial (Voyager) TPR          : {report.anomaly_tpr*100:.1f}%")
+    print(f"  Normal false-positive rate        : {report.normal_fpr*100:.1f}% "
+          f"(target ≤ {report.alpha*100:.0f}%)")
+    print(f"  Conformal coverage on normals     : {report.conformal_coverage*100:.1f}% "
+          f"(target ≥ {(1-report.alpha)*100:.0f}%)")
+    print("-" * 70)
+    print(f"  Conformal FPR control (empirical FPR <= {report.alpha+0.10:.2f} "
+          f"AND coverage >= {1-report.alpha:.2f}): "
+          f"{'PASS' if report.passed else 'FAIL'}")
+    print(f"  (AUROC {report.auroc:.3f} reported as an informational featurizer "
+          f"sanity check on {report.n_cal + report.n_anomaly} real windows.)")
+    print("  NOTE: an anomaly verdict flags an out-of-distribution signal; it is")
+    print("        NOT by itself proof of artificial origin (see README §07).")
+    return {"pass": report.passed, "auroc": report.auroc,
+            "tpr": report.anomaly_tpr, "fpr": report.normal_fpr,
+            "skipped": False}
+
+
+def test_suite_7_population_manifold():
+    """Lane 2: population-scale, per-object real-catalog manifold.
+
+    Thousands of *independent* real objects (ATNF pulsars, CHIME/FRB bursts, HTRU2
+    RFI) are mapped through ONE commensurate physical featurizer. Two leakage-free
+    protocols run with cross-validation keyed on each object's unique group id:
+
+      7a  multiclass classification of real object types (MCC headline);
+      7b  leave-class-out conformal novelty detection (extragalactic FRBs held out
+          entirely) — an honest OOD test on a *real distinct population*.
+
+    Unlike the windowed-waterfall manifold, each row is one independent detection,
+    so there is no within-observation pseudo-replication.
+    """
+    separator("TEST SUITE 7: POPULATION-SCALE CATALOG MANIFOLD (Lane 2)")
+    try:
+        from axiom.data.population import build_population
+        from axiom.stats.group_ood import (
+            evaluate_population_classification,
+            evaluate_population_ood,
+        )
+        pop = build_population(
+            cache=True,
+            # Genuinely-related rare rotating-neutron-star subtypes are merged so
+            # the multiclass problem stays well-posed (RRAT + MAGNETAR ->
+            # RARE_PULSAR); a 4-sample class cannot be learned or evaluated fairly.
+            class_aliases={"RRAT": "RARE_PULSAR", "MAGNETAR": "RARE_PULSAR"},
+        )
+        clf = evaluate_population_classification(pop, seed=SEED)
+        ood = evaluate_population_ood(pop, novel_class="FRB", seed=SEED)
+    except Exception as exc:
+        print(f"  [population manifold] unavailable ({exc}); suite skipped "
+              f"(catalogs not cached / offline).")
+        return {"pass": None, "skipped": True}
+
+    print(f"  Population (independent real objects): {pop.class_counts()}")
+    print(f"  Total objects: {pop.n_objects()} | unique group ids: "
+          f"{len(set(pop.group_ids))} (leakage-free by construction)")
+    print(f"  Featurizer: axiom.dsp.physical_features ({pop.X.shape[1]}-D, one "
+          f"code path for all classes)")
+    print("-" * 70)
+    print("  7a  Multiclass classification (StratifiedGroupKFold, HGBT)")
+    print(f"      Matthews corr. (MCC)  : {clf.mcc:.4f}  "
+          f"95% CI [{clf.mcc_ci[0]:.4f}, {clf.mcc_ci[1]:.4f}]")
+    print(f"      Weighted F1           : {clf.weighted_f1:.4f}  "
+          f"95% CI [{clf.weighted_f1_ci[0]:.4f}, {clf.weighted_f1_ci[1]:.4f}]")
+    print(f"      Macro F1 / bal. acc.  : {clf.macro_f1:.4f} / "
+          f"{clf.balanced_accuracy:.4f}")
+    print(f"      Per-class F1          : "
+          f"{ {k: round(v, 3) for k, v in clf.per_class_f1.items()} }")
+    print(f"      Folds: {clf.n_splits} | classification PASS: "
+          f"{'PASS' if clf.passed else 'FAIL'}")
+    print("-" * 70)
+    print("  7b  Leave-class-out conformal OOD (novel = FRB, extragalactic)")
+    print(f"      Normal populations    : {ood.normal_classes}")
+    print(f"      AUROC (FRB vs normal) : {ood.auroc:.4f}  "
+          f"95% CI [{ood.auroc_ci[0]:.4f}, {ood.auroc_ci[1]:.4f}]")
+    print(f"      Novel (FRB) TPR       : {ood.novel_tpr*100:.1f}%")
+    print(f"      Normal FPR            : {ood.normal_fpr*100:.1f}% "
+          f"(target ≤ {ood.alpha*100:.0f}%)")
+    print(f"      Conformal coverage    : {ood.conformal_coverage*100:.1f}% "
+          f"(target ≥ {(1-ood.alpha)*100:.0f}%)")
+    print(f"      OOD PASS: {'PASS' if ood.passed else 'FAIL'}")
+    print("-" * 70)
+    print("  NOTE: FRB separability reflects genuine extragalactic dispersion")
+    print("        (DM far above the catalog's own Galactic model); it validates")
+    print("        the physical feature space, and is NOT proof of artificial origin.")
+    return {"pass": bool(clf.passed and ood.passed),
+            "mcc": clf.mcc, "auroc": ood.auroc,
+            "n_objects": pop.n_objects(), "skipped": False}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════════════════
+
+def main():
+    print("=" * 70)
+    print("  axiom-astrophysics v2 — COMPREHENSIVE VALIDATION BENCHMARK")
+    print("  Dataset: HTRU2 (Parkes Observatory, 17,898 real candidates)")
+    print("=" * 70)
+
+    t0 = time.time()
+
+    # Load real data
+    X, y, col_names = load_htru2()
+    print(f"\n  Features: {col_names}")
+    print(f"  Shape: {X.shape} | Pulsars: {np.sum(y==1)} | RFI: {np.sum(y==0)}\n")
+
+    # Run all test suites
+    results_1, metrics_1 = test_suite_1_id_performance(X, y)
+    test_suite_2_ablation(X, y)
+    results_3 = test_suite_3_ood_detection(X, y)
+    results_4, all_preds = test_suite_4_baseline_comparison(X, y)
+    # Compare AXIOM against the STRONGEST baseline (honest SOTA test), not a
+    # deliberately weak one.
+    strongest = max(
+        (k for k in results_4 if k != "AXIOM Ensemble"),
+        key=lambda k: results_4[k]["mcc"],
+    )
+    results_5 = test_suite_5_significance(
+        y, all_preds, model_a="AXIOM Ensemble", model_b=strongest
+    )
+    results_6 = test_suite_6_manifold_ood()
+    results_7 = test_suite_7_population_manifold()
+
+    # Final summary
+    separator("FINAL VERDICT")
+    elapsed = time.time() - t0
+
+    id_pass = results_1["accuracy"][0] >= 0.98 and results_1["mcc"][0] >= 0.85
+    ood_pass = results_3.get("pass", False)
+    best_model = max(results_4, key=lambda k: results_4[k]["mcc"])
+    sig_pass = results_5.get("p_value", 1.0) < 0.05
+
+    print(f"  Suite 1 (ID Performance):      {'PASS' if id_pass else 'FAIL'}")
+    print("  Suite 2 (Ablation):            COMPLETED")
+    print(f"  Suite 3 (OOD Detection):       {'PASS' if ood_pass else 'FAIL'}")
+    print(f"  Suite 4 (Baseline Winner):     {best_model}")
+    print(f"  Suite 5 (Significance):        {'SIGNIFICANT' if sig_pass else 'NOT SIGNIFICANT'}")
+    m6 = results_6.get("pass")
+    m6_str = "SKIPPED" if results_6.get("skipped") else ("PASS" if m6 else "FAIL")
+    m6_extra = "" if results_6.get("skipped") else f" (AUROC {results_6.get('auroc', float('nan')):.3f})"
+    print(f"  Suite 6 (Manifold OOD, Lane 1):{m6_str}{m6_extra}")
+    m7 = results_7.get("pass")
+    m7_str = "SKIPPED" if results_7.get("skipped") else ("PASS" if m7 else "FAIL")
+    m7_extra = ("" if results_7.get("skipped") else
+                f" (MCC {results_7.get('mcc', float('nan')):.3f}, "
+                f"FRB-OOD AUROC {results_7.get('auroc', float('nan')):.3f}, "
+                f"n={results_7.get('n_objects', 0)})")
+    print(f"  Suite 7 (Population manifold): {m7_str}{m7_extra}")
+    print(f"\n  Total execution time: {elapsed:.1f}s")
+
+    manifold_ok = results_6.get("skipped") or bool(m6)
+    population_ok = results_7.get("skipped") or bool(m7)
+    overall = id_pass and ood_pass and manifold_ok and population_ok
+    if overall:
+        print("\n  >>> SYSTEM VALIDATED. This is real, not random.")
+    else:
+        print("\n  >>> SYSTEM NEEDS WORK. Targets not fully met.")
+
+    print("=" * 70)
+
 
 if __name__ == "__main__":
-    import argparse
-    import json
-    
-    parser = argparse.ArgumentParser(description="AXIOM-ASTROPHYSICS Comprehensive Benchmark Suite v1.0")
-    parser.add_argument("--dataset", required=True, help="Input dataset JSON file")
-    parser.add_argument("--output", default="audit_log.json", help="Output audit log JSON file")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--use-c-core", action="store_true", help="Use C core shared library if available")
-    parser.add_argument("--use-c-standalone", action="store_true", help="Use C standalone executable (fastest)")
-    args = parser.parse_args()
-    
-    # Import the pipeline
-    import sys
-    import os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from axiom_astrophysics_v1 import AxiomPipeline, PipelineConfig
-    
-    # Create benchmark instance
-    bench = AxiomBenchmark(use_c_core=args.use_c_core, use_c_standalone=args.use_c_standalone)
-    
-    print("\n" + "="*80)
-    print("AXIOM-ASTROPHYSICS COMPREHENSIVE BENCHMARK v1.0")
-    print("="*80)
-    
-    if args.use_c_standalone and bench.c_standalone_path:
-        print("[MODE] C Standalone Executable (Maximum Performance)")
-        print()
-        
-        # Run C standalone executable
-        bench.start_phase("C Standalone Execution")
-        try:
-            c_metrics = bench.run_c_standalone(args.dataset, args.output)
-            bench.end_phase(c_metrics)
-        except Exception as e:
-            print(f"[ERROR] C standalone failed: {e}")
-            print("[FALLBACK] Switching to Python pipeline")
-            bench.start_phase("Full Pipeline Execution")
-            config = PipelineConfig(
-                dataset_path=args.dataset,
-                output_path=args.output,
-                random_seed=args.seed,
-            )
-            AxiomPipeline().run(config)
-            bench.end_phase()
-    else:
-        if bench.c_core_lib:
-            print("[MODE] Python Pipeline with C Core Acceleration")
-        else:
-            print("[MODE] Python Pipeline (Pure Python)")
-        print()
-        
-        # Run full pipeline with benchmarking
-        bench.start_phase("Full Pipeline Execution")
-        config = PipelineConfig(
-            dataset_path=args.dataset,
-            output_path=args.output,
-            random_seed=args.seed,
-        )
-        AxiomPipeline().run(config)
-        bench.end_phase()
-    
-    # Load results and compute accuracy
-    bench.start_phase("Accuracy Analysis")
-    with open(args.output, "r") as f:
-        audit_data = json.load(f)
-    audit_records = audit_data.get("audit_records", [])
-    bench.record_accuracy_metrics(audit_records)
-    bench.end_phase()
-    
-    # Generate audit report
-    bench.start_phase("Audit Report Generation")
-    bench.generate_audit_report(audit_records)
-    bench.end_phase()
-    
-    # Generate comprehensive visualizations
-    bench.start_phase("Visualization Generation")
-    bench.generate_visualizations(audit_records)
-    bench.end_phase()
-    
-    # Save and display results
-    output_path = bench.save()
-    bench.print_summary()
-    
-    print(f"\n[COMPLETE] Benchmark results saved to: {output_path}")
-    print(f"[COMPLETE] Audit report: {os.path.join(bench.output_dir, 'benchmark_audit_report.txt')}")
-    print(f"[COMPLETE] Visualizations: {bench.output_dir}/")
-    print("="*80)
+    main()

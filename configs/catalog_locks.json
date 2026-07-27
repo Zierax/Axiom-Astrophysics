@@ -1,0 +1,62 @@
+{
+  "atnf_pulsars": {
+    "backend": "vizier",
+    "sha256": "7c17a875a07018bc476a5e4a68426b9911c724a18c14d5009c4ccd0f97ca0ecf",
+    "size_bytes": 217336,
+    "source": "B/psr/psr"
+  },
+  "c1": {
+    "backend": "vizier",
+    "sha256": "6539d261336b903dac2d81bb977c038dee3a6ef1f375b3ca7d376a3051d1f746",
+    "size_bytes": 769,
+    "source": "J/MNRAS/418/2475"
+  },
+  "c2": {
+    "backend": "vizier",
+    "sha256": "e45c62a6879ec8a29414f899e94764305432e677d68c98864e61397273bc45a8",
+    "size_bytes": 37253,
+    "source": "J/ApJS/257/59/table2"
+  },
+  "c3": {
+    "backend": "vizier",
+    "sha256": "eaa2841345a78bd022793b82715c55e400eb9213808f67cf95c59758972b4aca",
+    "size_bytes": 817199,
+    "source": "VIII/102"
+  },
+  "chime_frb_cat1": {
+    "backend": "vizier",
+    "sha256": "ccf22b99e00a1ae34daa6e0317db8a103bb74db113cfe48e93bdc3e136e28589",
+    "size_bytes": 47143,
+    "source": "J/ApJS/257/59/table2"
+  },
+  "gbncc": {
+    "backend": "vizier",
+    "sha256": "99a34ffe25543313564d9d46556a8308e6f0b047f0995fb3516cd52cc27ab995",
+    "size_bytes": 757,
+    "source": "J/ApJ/872/18"
+  },
+  "htru2_kaggle": {
+    "backend": "kaggle",
+    "sha256": "b13b4d8929e96ecd196e464c1c8a454c3ac2ffa631015f6388957531a9923f59",
+    "size_bytes": 1730114,
+    "source": "charitarth/pulsar-dataset-htru2"
+  },
+  "htru2cand": {
+    "backend": "vizier",
+    "sha256": "f4cd90964fdc2ac4755c1aa135ca1893882b307255d7f867190e51a683303dff",
+    "size_bytes": 763,
+    "source": "J/MNRAS/443/11"
+  },
+  "palfa": {
+    "backend": "vizier",
+    "sha256": "6a2ee398806c8988de519911a65e0317d4082a738c8432dcfe196dc3afe383fd",
+    "size_bytes": 760,
+    "source": "J/ApJ/787/101"
+  },
+  "test1": {
+    "backend": "vizier",
+    "sha256": "6539d261336b903dac2d81bb977c038dee3a6ef1f375b3ca7d376a3051d1f746",
+    "size_bytes": 769,
+    "source": "J/MNRAS/418/2475"
+  }
+}

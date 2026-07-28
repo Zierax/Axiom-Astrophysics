@@ -255,7 +255,10 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
         sr = density.log_prob_per_class(feats[i:i + 1], 0)[0]
         cal = cal_p if sp >= sr else cal_r
         s = max(sp, sr)
-        htru2_pvals[i] = (int(np.sum(cal <= s)) + 1) / (len(cal) + 1)
+        # Conformal p-value: anomalous = LOW density (rare under null).
+        # A test point is flagged when its max-class log-probability is
+        # *lower* than most calibration points, so we count cal >= s.
+        htru2_pvals[i] = (int(np.sum(cal >= s)) + 1) / (len(cal) + 1)
 
     # ------------------------------------------------------------------
     # Primary-path fusion: a self-consistent descriptor-conformal p-value
@@ -265,8 +268,8 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
     # own descriptors (when present) plus a documented broadband reference, so a
     # real observation is flagged when its measured morphology is more tonal /
     # concentrated than the natural population. The two conformal p-values are
-    # combined with Fisher's method (valid for correlated tests):
-    #     T = -2 * sum(ln(p_i)),  p_fisher = chi2.sf(T, df=2).
+    # combined via Bonferroni correction (valid under arbitrary dependence):
+    #     p_fused = min(2 * p_htru2, 2 * p_desc).
     # Records without a real spectrogram keep p_descriptor = 1 (neutral), so
     # their verdict rests on the HTRU2 path exactly as before.
     # ------------------------------------------------------------------
@@ -299,16 +302,13 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
         else:
             p_d = 1.0
         desc_pvals[i] = p_d
-        # Fisher's method for combining dependent p-values: T = -2 * sum(ln(p_i)).
-        # Under H0, T ~ chi2(df=2*k) where k = number of tests. This is valid
-        # for correlated tests (unlike Bonferroni which assumes independence and
-        # over-penalises). The combined p-value is the survival function of the
-        # chi2 distribution at T.
-        ps = np.array([p_h, p_d], dtype=np.float64)
-        ps = np.clip(ps, 1e-16, 1.0)
-        T = float(-2.0 * np.sum(np.log(ps)))
-        p_fisher = float(chi2.sf(T, df=2))
-        pvals[i] = min(p_fisher, 1.0)
+        # Bonferroni fusion (primary): valid under ARBITRARY dependence between
+        # the two p-values computed from the same observation. Fisher's method
+        # requires independence which is violated here. For k=2 dependent tests:
+        #   p_fused = min(2 * p_htru2, 2 * p_desc)
+        # This controls the family-wise error rate at alpha.
+        p_fused_bonf = min(2.0 * p_h, 2.0 * p_d)
+        pvals[i] = min(p_fused_bonf, 1.0)
         # The *verdict* p-value follows the documented design: a signal is off-
         # manifold when it is rare in EITHER space, so the smaller of the two
         # conformal p-values governs. min(p_h, p_d) < alpha already bounds the

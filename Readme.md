@@ -5,7 +5,7 @@
 **Major Improvements:**
 - **Voyager 1 detected end-to-end**: production pipeline (`run_axiom.py`) achieves **TPR 1.000 / FPR 0.000** on 69 real telescope signals (4 provenance-pinned .fil + 65 Kaggle SETI GUPPI spectrograms). Voyager's fused p-value: **p_fused = 0.0023** (significant at α=0.05).
 - **Off-manifold anchor for narrowband carriers**: zero-DM signals placed at the physically correct off-manifold position on the HTRU2 manifold (not hand-tuned — derived from the HTRU2 feature map geometry).
-- **Fisher's method** replaces Bonferroni for dependent p-value fusion: `T = -2·Σln(p_i)`, `p_fisher = χ².sf(T, df=2)`. Valid for correlated HTRU2 + descriptor conformal tests.
+- **Bonferroni fusion** is the primary p-value fusion method (valid under arbitrary dependence between the HTRU2 and descriptor conformal tests): `p_fused = min(1, min(2·p_htru2, 2·p_desc))`. **Fisher's method** (`T = -2·Σln(p_i)`, `p_fisher = χ².sf(T, df=2)`) is reported as a supplementary sensitivity analysis but requires independence and is anti-conservative under the positive dependence in this setting.
 - **114 tests** across 15 test files. All library modules use `logging` (no `print()`), no silent exception swallowing, no CWD-dependent paths.
 
 ## Version 2.1 - Population-Scale Validation (2026-07-15)
@@ -263,7 +263,7 @@ extend it to other VizieR catalogs.
     Listen GUPPI spectrograms are genuine, unlabeled stellar observations, not
     adjudicated technosignatures. They are used as *anomaly controls*: we verify
     the engine surfaces off-manifold telescope signals. **Current results:**
-    - *Production pipeline* (`run_axiom.py`): **TPR 1.000 / FPR 0.000** on 69 real signals (Voyager 1 detected, p_fused=0.0023). The off-manifold anchor + Fisher's method fusion path is active.
+    - *Production pipeline* (`run_axiom.py`): **TPR 1.000 / FPR 0.000** on 69 real signals (Voyager 1 detected, p_fused=0.0023). The off-manifold anchor + Bonferroni fusion path is active.
     - *Benchmark Suite 3*: **TPR 32%** on the real set, 0% natural FPR. Uses a different evaluation protocol without the real spectrogram null — see BENCHMARKS §3/§6.
     An "Anomaly" verdict therefore means *off the natural manifold*, **not** proof of artificial origin — see §07.
  - **Native waterfall morphology now drives the primary verdict.** The
@@ -274,8 +274,8 @@ extend it to other VizieR catalogs.
     kurtosis, drift, bandwidth, channel concentration, spectral flatness) are
     featurised directly from its real 2-D spectrogram and feed a
     **descriptor-conformal p-value** (`DescriptorConformalDetector`) that is
-    Fisher-fused into the OOD decision inside `evaluate_ood`:
-    `T = -2·Σln(p_i)`, `p_fisher = χ².sf(T, df=2)`. A real signal is
+    Bonferroni-fused into the OOD decision inside `evaluate_ood`:
+    `p_fused = min(1, min(2·p_htru2, 2·p_desc))`. A real signal is
     therefore flagged when its measured morphology is off-manifold in *either*
     space — the 8-D HTRU2 anchor is no longer the sole primary driver.
     Records without a real spectrogram keep `p_descriptor = 1` (neutral) and

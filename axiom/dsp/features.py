@@ -251,18 +251,19 @@ def _snr_to_dmsnr(snr, lo, hi):
     This is a *physically motivated* placement, not the old linear percentile
     interpolation. For a matched-filter detection the folded-profile
     integrated S/N (which is what the HTRU2 DM-SNR-curve mean measures) grows
-    as the **square root** of the single-pulse / spectral detection S/N via the
-    radiometer equation
+    as the square root of integration time via the radiometer equation:
 
-        S/N_folded  proportional to  sqrt(N_pulses) * S/N_single,
+        S/N_folded  proportional to  sqrt(t_int) = sqrt(N_pulses * t_pulse),
 
-    and the survey population saturates: once a candidate is well above the
-    detection threshold its DM-SNR-curve statistics stop climbing linearly and
-    asymptote to the brightest exemplars in the cluster. We therefore map the
-    detection S/N through a saturating square-root law anchored so that the
-    survey's working detection significance (``_SNR_REFERENCE`` ~ 10 sigma)
-    lands at the *median* (``lo``..``hi`` band centre), faint sources approach
-    ``lo`` and very bright sources asymptote to ``hi``.
+    where t_int is the total integration time, N_pulses is the number of
+    pulses folded, and t_pulse is the per-pulse duration.  The survey
+    population saturates: once a candidate is well above the detection
+    threshold its DM-SNR-curve statistics stop climbing linearly and asymptote
+    to the brightest exemplars in the cluster. We therefore map the detection
+    S/N through a saturating square-root law anchored so that the survey's
+    working detection significance (``_SNR_REFERENCE`` ~ 10 sigma) lands at the
+    *median* (``lo``..``hi`` band centre), faint sources approach ``lo`` and
+    very bright sources asymptote to ``hi``.
 
     Parameters
     ----------

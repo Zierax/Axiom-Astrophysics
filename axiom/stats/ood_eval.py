@@ -175,7 +175,23 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
     density.fit(X_fit, y_fit)
     natural_min = float(np.min(density.log_prob(X_fit)))
 
-    feats, chaos, oids, ocls, roles, waves = [], [], [], [], [], []
+    if not records:
+        return {
+            "verdicts": [],
+            "roles": [],
+            "names": [],
+            "pvals": np.array([], dtype=np.float64),
+            "htru2_pvals": np.array([], dtype=np.float64),
+            "descriptor_pvals": np.array([], dtype=np.float64),
+            "p_fisher": np.array([], dtype=np.float64),
+            "descriptor_fusion_active": False,
+            "ood_mask": np.array([], dtype=bool),
+            "anomaly_tpr": 1.0,
+            "natural_fpr": 0.0,
+            "pass": True,
+        }
+
+    feats, chaos, waves, oids, ocls, roles = [], [], [], [], [], []
     for name, ocls_, stype, dm, snr, role in records:
         # Real observational features (e.g. genuine HTRU2 RFI rows) override the
         # physics map so the manifold uses measured survey data, not a model.
@@ -256,9 +272,12 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
         cal = cal_p if sp >= sr else cal_r
         s = max(sp, sr)
         # Conformal p-value: anomalous = LOW density (rare under null).
-        # A test point is flagged when its max-class log-probability is
-        # *lower* than most calibration points, so we count cal >= s.
-        htru2_pvals[i] = (int(np.sum(cal >= s)) + 1) / (len(cal) + 1)
+        # Standard conformal: count calibration points with nonconformity
+        # score >= test score.  With ε = -log p (higher = more anomalous)
+        # and raw log-probabilities (higher = more normal), ε_cal >= ε_test
+        # is equivalent to cal <= s.  This matches the convention used in
+        # ConformalCalibrator (calibration.py:61) and historical/__init__.py.
+        htru2_pvals[i] = (int(np.sum(cal <= s)) + 1) / (len(cal) + 1)
 
     # ------------------------------------------------------------------
     # Primary-path fusion: a self-consistent descriptor-conformal p-value
@@ -287,11 +306,19 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
     # FRB / broadband RFI) so the primary path stays functional. If neither
     # source is available the descriptor path is disabled (p_descriptor = 1,
     # neutral) and the verdict rests on the HTRU2 / chaos paths.
+    #
+    # NOTE: The null includes ALL natural/interference signals, including each
+    # signal being tested.  This means a natural signal's own features are in
+    # the null when computing its p-value, inflating the p-value by
+    # ~1/(|null|+1).  This is a small *conservative* bias (natural signals
+    # appear slightly less anomalous than they should), not a safety issue.
+    # A full leave-one-out correction is deferred to future work.
     if not null_features:
         null_features = _natural_waterfall_null()
     desc_detector = DescriptorConformalDetector(alpha=0.05).fit(null_features)
 
-    pvals = np.zeros(len(feats))       # Fisher-fused (transparency only)
+    pvals = np.zeros(len(feats))       # Bonferroni-fused p-values (primary)
+    p_fisher = np.ones(len(feats))     # Fisher-fused p-values (supplementary)
     p_min = np.ones(len(feats))        # min(p_h, p_d): verdict p-value
     desc_pvals = np.ones(len(feats))
     for i, (name, _oc, _st, _dm, _snr, _role) in enumerate(records):
@@ -303,12 +330,20 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
             p_d = 1.0
         desc_pvals[i] = p_d
         # Bonferroni fusion (primary): valid under ARBITRARY dependence between
-        # the two p-values computed from the same observation. Fisher's method
-        # requires independence which is violated here. For k=2 dependent tests:
-        #   p_fused = min(2 * p_htru2, 2 * p_desc)
+        # the two p-values computed from the same observation. For k=2 tests:
+        #   p_fused = min(1, min(2 * p_htru2, 2 * p_desc))
         # This controls the family-wise error rate at alpha.
         p_fused_bonf = min(2.0 * p_h, 2.0 * p_d)
         pvals[i] = min(p_fused_bonf, 1.0)
+        # Fisher's method (supplementary): T = -2 sum(ln p_i), p_fisher = sf(T, 2k).
+        # Requires independence between the two p-values. Since both paths share
+        # the same input observation, they are positively correlated, making
+        # Fisher's method anti-conservative. Reported for transparency only.
+        if p_h > 0 and p_d > 0:
+            T = -2.0 * (np.log(p_h) + np.log(p_d))
+            p_fisher[i] = float(chi2.sf(T, 4))  # df = 2 * k = 4
+        else:
+            p_fisher[i] = 0.0
         # The *verdict* p-value follows the documented design: a signal is off-
         # manifold when it is rare in EITHER space, so the smaller of the two
         # conformal p-values governs. min(p_h, p_d) < alpha already bounds the
@@ -376,6 +411,7 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
         "pvals": pvals,
         "htru2_pvals": htru2_pvals,
         "descriptor_pvals": desc_pvals,
+        "p_fisher": p_fisher,
         "descriptor_fusion_active": bool(desc_detector.fitted),
         "ood_mask": ood_mask,
         "anomaly_tpr": tpr,

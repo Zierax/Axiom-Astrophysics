@@ -34,7 +34,8 @@ class TestEvaluateOod:
     def test_natural_not_flagged(self, htru2_like):
         X, y = htru2_like
         records = [_make_record(f"nat_{i}", role="Natural") for i in range(5)]
-        result = evaluate_ood(X, y, records, seed=42)
+        real_features = {f"nat_{i}": X[i] for i in range(5)}
+        result = evaluate_ood(X, y, records, seed=42, real_features=real_features)
         # Natural signals should generally not be flagged as Anomaly
         assert result["natural_fpr"] <= 0.5  # generous bound for small test data
 

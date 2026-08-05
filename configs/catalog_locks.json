@@ -58,5 +58,17 @@
     "sha256": "6539d261336b903dac2d81bb977c038dee3a6ef1f375b3ca7d376a3051d1f746",
     "size_bytes": 769,
     "source": "J/MNRAS/418/2475"
+  },
+  "meerkat_dr1": {
+    "backend": "vizier",
+    "sha256": "PLACEHOLDER_RUN_PIPELINE_TO_PIN",
+    "size_bytes": 0,
+    "source": "J/MNRAS/535/1/table1"
+  },
+  "askap_vast_dr2": {
+    "backend": "vizier",
+    "sha256": "PLACEHOLDER_RUN_PIPELINE_TO_PIN",
+    "size_bytes": 0,
+    "source": "J/ApJS/271/6/table1"
   }
 }

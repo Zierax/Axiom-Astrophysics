@@ -40,16 +40,23 @@ DESCRIPTOR_VECTOR_KEYS: tuple = (
 
 
 def _robust_background(spec: np.ndarray) -> tuple[float, float]:
-    """Median/MAD of the per-channel mean power (robust to channel offset).
+    """Median and raw MAD of the per-channel mean power (robust to offsets).
 
     Using the *channel-axis* (not the flattened samples) avoids a broadband
     observation being mistaken for a high background: a uniform offset across
     all channels must not inflate the threshold for narrowband detection.
+
+    Returns ``(median, mad)`` where ``mad`` is the *raw* median absolute
+    deviation (plus a ``1e-9`` floor). Callers apply the Gaussian-consistency
+    factor (``1.4826``) and any safety margin exactly once, at the use site,
+    so the implemented background matches the documented formula::
+
+        noise = 1.5 * 1.4826 * MAD(channel_mean_power)
     """
     chan_power = spec.mean(axis=1).astype(np.float64)
     med = float(np.median(chan_power))
     mad = float(np.median(np.abs(chan_power - med))) + 1e-9
-    return med, 1.4826 * mad
+    return med, mad
 
 
 def _gini(values: np.ndarray) -> float:
@@ -88,8 +95,11 @@ def compute_waterfall_features(spec: np.ndarray) -> dict:
     if spec.ndim != 2 or spec.size == 0:
         raise ValueError(f"spec must be a non-empty 2-D array, got {spec.shape}")
 
-    med, mad = _robust_background(spec)
-    noise = max(1.5 * 1.4826 * mad, 1e-9)  # robust std estimate
+    med, mad_raw = _robust_background(spec)
+    # Single application of the Gaussian-consistency factor and safety margin:
+    # noise = 1.5 * 1.4826 * MAD(channel means). _robust_background returns
+    # the raw MAD, so no second 1.4826 scaling may be added here.
+    noise = max(1.5 * 1.4826 * mad_raw, 1e-9)  # robust std estimate
 
     # Per-channel integrated power -> frequency-axis morphology.
     chan_power = spec.mean(axis=1)

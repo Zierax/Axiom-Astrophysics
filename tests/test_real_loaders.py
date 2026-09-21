@@ -4,6 +4,7 @@ The download path is exercised manually; here we validate the deterministic
 record builder and manifest so regressions in the real-data OOD augmentation
 are caught without hitting Zenodo.
 """
+import importlib.util
 import os
 
 import numpy as np
@@ -132,11 +133,7 @@ def _make_fake_zip(path, n_signals=6):
 
 
 def _has_h5py() -> bool:
-    try:
-        import h5py
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("h5py") is not None
 
 
 @pytest.mark.skipif(not _has_h5py(), reason="h5py not installed")
@@ -243,3 +240,29 @@ def test_waterfall_features_narrowband_scores_higher_than_broadband():
     assert scorer.score("n") > scorer.score("b")
     assert 0.0 <= waterfall_narrowband_score(f_narrow) <= 1.0
     assert scorer.score("missing") == 0.5  # neutral default
+
+
+def test_waterfall_noise_matches_documented_background_formula():
+    """Pin the background contract: noise = 1.5 * 1.4826 * MAD(chan means).
+
+    Regression test: the Gaussian-consistency factor must be applied exactly
+    once (a second 1.4826 scaling lowers every SNR by ~32% and raises the
+    5-sigma occupancy threshold by ~48%). Verifies through the public
+    ``compute_waterfall_features`` outputs only.
+    """
+    from axiom.dsp.waterfall_features import compute_waterfall_features
+
+    rng = np.random.default_rng(12345)
+    spec = np.abs(rng.normal(0.0, 1.0, size=(64, 128))) + 2.0
+    spec[7, :] += 25.0  # one tone channel; robust background must ignore it
+
+    chan = spec.mean(axis=1)
+    med = float(np.median(chan))
+    mad_raw = float(np.median(np.abs(chan - med))) + 1e-9
+    noise = max(1.5 * 1.4826 * mad_raw, 1e-9)
+
+    feats = compute_waterfall_features(spec)
+    expected_peak = min(max((chan.max() - med) / noise, 0.0), 1e4)
+    assert feats["peak_snr"] == pytest.approx(expected_peak, rel=1e-9)
+    expected_occ = float(np.mean(chan > (med + 5.0 * noise)))
+    assert feats["occupancy"] == pytest.approx(expected_occ, rel=1e-9)

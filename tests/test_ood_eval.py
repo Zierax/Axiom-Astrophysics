@@ -109,3 +109,23 @@ class TestEvaluateOod:
                 assert p <= 0.05, (
                     f"non-mask Anomaly with fused p={p} > 0.05: "
                     "arbitrator input is not Bonferroni-fused")
+
+    def test_anchored_mask_tracks_placed_features(self, htru2_like):
+        """Narrowband carriers without measured features must be flagged in
+        anchored_mask; records with real measured features must not."""
+        X, y = htru2_like
+        records = [
+            _make_record("nb", sig_type="Narrowband", dm=0.0, snr=50.0,
+                         role="Anomaly"),
+            _make_record("nat", role="Natural"),
+        ]
+        real_features = {"nat": X[0]}
+        result = evaluate_ood(X, y, records, seed=42,
+                              real_features=real_features)
+        assert list(result["anchored_mask"]) == [True, False]
+
+    def test_anchored_mask_empty_for_empty_records(self, htru2_like):
+        X, y = htru2_like
+        result = evaluate_ood(X, y, [], seed=42)
+        assert result["anchored_mask"].dtype == bool
+        assert len(result["anchored_mask"]) == 0

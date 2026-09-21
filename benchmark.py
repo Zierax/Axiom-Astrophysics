@@ -235,6 +235,9 @@ def test_suite_3_ood_detection(X, y):
             print(f"  [real OOD] unavailable ({exc}); using synthetic OOD set.")
             records, real_features, real_waves, waterfall_features = [], {}, {}, {}
     if not records:
+        # Synthetic offline fallback (seeded local RNG: reproducible, and it
+        # never perturbs the global stream used by the measured pipeline).
+        _fb_rng = np.random.default_rng(SEED)
         records = []
         for i in range(25):
             records.append((f"NarrowbandTone_{i}", "Narrowband", "Narrowband",
@@ -243,7 +246,7 @@ def test_suite_3_ood_detection(X, y):
         records.append(("BLC1", "Narrowband", "Narrowband", 0.0, 15.0, "Anomaly"))
         for i in range(25):
             records.append((f"FRB_{i}", "FRB", "FRB",
-                            np.random.uniform(100, 1000), 20.0, "Natural"))
+                            float(_fb_rng.uniform(100, 1000)), 20.0, "Natural"))
         for i in range(15):
             records.append((f"Quasar_{i}", "Quasar", "Quasar", 0.0, 5.0, "Natural"))
         for i in range(25):

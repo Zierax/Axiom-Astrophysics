@@ -42,6 +42,31 @@ from axiom.stats.arbitration import SignalArbitrator
 from axiom.stats.calibration import ConformalCalibrator
 from axiom.stats.chaos import compute_chaos_descriptor
 
+# Deterministic feature-space placement for narrowband carriers that carry
+# no measured feature vector (physics_map returns None for them by design:
+# a zero-DM symmetric tone belongs to NEITHER HTRU2 cluster, so mapping it
+# to the RFI cluster would be a false on-manifold placement).
+#
+# Be explicit about what this is: HAND-SPECIFIED coordinates, chosen from
+# carrier physics (no dispersion -> dmsnr moments ~0; symmetric tonal
+# profile -> low mean, narrow std, ~0 skew/kurtosis). It is NOT measured
+# data and NOT a detection guarantee — the density estimator and the
+# conformal calibration still decide the verdict (had real survey sources
+# occupied this region, the point would score as on-manifold). Records
+# placed here are tracked in the returned ``anchored_mask`` so reports can
+# disclose exactly which verdicts rest on placed rather than measured
+# features.
+_NARROWBAND_OFFMANIFOLD_ANCHOR = np.array([
+    10.0,                           # profile_mean (low = symmetric)
+    2.0,                            # profile_std (narrow peak)
+    0.0,                            # profile_kurtosis
+    0.0,                            # profile_skewness
+    0.0,                            # dmsnr_mean (no DM)
+    0.5,                            # dmsnr_std
+    0.0,                            # dmsnr_kurtosis
+    0.0,                            # dmsnr_skewness
+], dtype=np.float64)
+
 # Genuine natural dynamic spectra used as the real descriptor-conformal null.
 # These are provenance-pinned telescope observations (FRB, broadband RFI) —
 # never synthetic — so the primary novelty path compares each candidate against
@@ -150,8 +175,8 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
 
     Returns
     -------
-    dict with verdicts, per-signal roles, p-values, ood_mask, and the
-    aggregate metrics anomaly_tpr / natural_fpr / pass.
+    dict with verdicts, per-signal roles, p-values, ood_mask, anchored_mask,
+    and the aggregate metrics anomaly_tpr / natural_fpr / pass.
     """
     X_tr, _, y_tr, _ = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=seed
@@ -186,40 +211,30 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
             "p_fisher": np.array([], dtype=np.float64),
             "descriptor_fusion_active": False,
             "ood_mask": np.array([], dtype=bool),
+            "anchored_mask": np.array([], dtype=bool),
             "anomaly_tpr": 1.0,
             "natural_fpr": 0.0,
             "pass": True,
         }
 
-    feats, chaos, waves, oids, ocls, roles = [], [], [], [], [], []
+    feats, chaos, waves, oids, ocls, roles, anchored = [], [], [], [], [], [], []
     for name, ocls_, stype, dm, snr, role in records:
         # Real observational features (e.g. genuine HTRU2 RFI rows) override the
         # physics map so the manifold uses measured survey data, not a model.
         mapped = None
         if real_features is not None and name in real_features and real_features[name] is not None:
             mapped = np.asarray(real_features[name], dtype=np.float64)
+            anchored.append(False)
         else:
             mapped = physics_map_htru2_features(stype, dm=dm, snr=snr, seed=seed)
-        if mapped is None:
-            # Narrowband carrier: genuinely off the HTRU2 pulsar/RFI manifold
-            # (no DM sweep, symmetric tonal profile). Instead of mapping to the
-            # RFI cluster (which would be on-manifold), we place it at the
-            # physically correct off-manifold position: profile_mean ~10 (low,
-            # because a tone has a symmetric, low-variance profile), dmsnr ~0
-            # (no dispersion), skew ~0, kurt ~0. This is NOT a hand-tuned
-            # guarantee — it is the物理 consequence of a zero-DM carrier on
-            # the HTRU2 feature map. The density estimator will naturally flag
-            # it as OOD because no real HTRU2 survey source has this profile.
-            mapped = np.array([
-                10.0,                           # profile_mean (low = symmetric)
-                2.0,                            # profile_std (narrow peak)
-                0.0,                            # profile_kurtosis
-                0.0,                            # profile_skewness
-                0.0,                            # dmsnr_mean (no DM)
-                0.5,                            # dmsnr_std
-                0.0,                            # dmsnr_kurtosis
-                0.0,                            # dmsnr_skewness
-            ], dtype=np.float64)
+            if mapped is None:
+                # Narrowband carrier with no measured features: use the
+                # hand-specified deterministic placement (see
+                # _NARROWBAND_OFFMANIFOLD_ANCHOR). Tracked, not hidden.
+                mapped = _NARROWBAND_OFFMANIFOLD_ANCHOR.copy()
+                anchored.append(True)
+            else:
+                anchored.append(False)
         feats.append(mapped)
         # Real observational waveforms (e.g. Breakthrough Listen candidate
         # cadences) drive the CNN/chaos branch. We do NOT fall back to synthetic
@@ -238,6 +253,13 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
         roles.append(role)
     feats = np.array(feats, dtype=np.float64)
     chaos = np.array(chaos, dtype=np.float64)
+    anchored_mask = np.array(anchored, dtype=bool)
+    if int(np.sum(anchored_mask)) > 0:
+        log.warning(
+            "%d/%d audit records use the hand-specified carrier placement "
+            "(no measured feature vector); their HTRU2-path verdicts rest on "
+            "placed, not measured, features. See anchored_mask.",
+            int(np.sum(anchored_mask)), len(feats))
     # Keep `waves` as a list of (possibly variable-length) 1-D arrays: real
     # waveforms are 256 samples while records without a real waveform carry a
     # length-1 placeholder. Forcing a uniform ndarray would fail; the downstream
@@ -405,6 +427,7 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
         "p_fisher": p_fisher,
         "descriptor_fusion_active": bool(desc_detector.fitted),
         "ood_mask": ood_mask,
+        "anchored_mask": anchored_mask,
         "anomaly_tpr": tpr,
         "natural_fpr": fpr,
         "pass": tpr >= 0.9 and fpr <= 0.1,

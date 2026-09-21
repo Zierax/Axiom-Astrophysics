@@ -134,11 +134,15 @@ def extract_all_physical_features(waveform, sample_rate_hz=1000.0):
         "intensity_sigma": intensity
     }
 
-def simulate_htru2_features(waveform, true_dm=0.0, peak_snr=15.0, dm_sigma=50.0):
+def simulate_htru2_features(waveform, true_dm=0.0, peak_snr=15.0, dm_sigma=50.0,
+                            seed=None):
     """
     Simulates a physical mapping from a 1D waveform to the 8 HTRU2 features.
     Features 0-3: Profile (mean, std, excess kurtosis, skewness)
     Features 4-7: DM-SNR curve (mean, std, excess kurtosis, skewness)
+
+    seed : optional int. Draws use a local ``default_rng(seed)`` instance so
+        results are reproducible without touching the global RNG state.
     """
     # 1. Profile Moments (Time-domain integrated profile)
     prof_mean = float(np.mean(waveform))
@@ -156,8 +160,9 @@ def simulate_htru2_features(waveform, true_dm=0.0, peak_snr=15.0, dm_sigma=50.0)
     else:
         dm_snr_curve = np.zeros_like(trial_dms)
         
-    # Add noise to the curve
-    dm_snr_curve += np.random.normal(0, max(1.0, peak_snr * 0.1), len(trial_dms))
+    # Add noise to the curve (local RNG: reproducible, no global-state effects).
+    rng = np.random.default_rng(seed)
+    dm_snr_curve += rng.normal(0, max(1.0, peak_snr * 0.1), len(trial_dms))
     
     # 3. DM-SNR Moments
     dmsnr_mean = float(np.mean(dm_snr_curve))

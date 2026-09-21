@@ -1,19 +1,15 @@
-import random
-
 import numpy as np
 
 
 def generate_noise(length, amplitude=0.1, seed=None):
-    if seed is not None:
-        np.random.seed(seed)
-    return np.random.normal(0, amplitude, length)
+    rng = np.random.default_rng(seed)
+    return rng.normal(0, amplitude, length)
 
 def synthesize_pulsar(length=256, period_sec=2.0, pulse_width_sec=0.1, intensity=5.0, sample_rate_hz=1000.0, seed=None):
     """
     Synthesize periodic Gaussian pulses representing a pulsar.
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     t = np.arange(length) / sample_rate_hz
     waveform = np.zeros(length)
@@ -32,15 +28,14 @@ def synthesize_pulsar(length=256, period_sec=2.0, pulse_width_sec=0.1, intensity
         waveform = intensity * np.exp(-0.5 * (dist / sigma)**2)
         
     # Add background noise
-    waveform += np.random.normal(0, 0.2, length)
+    waveform += rng.normal(0, 0.2, length)
     return waveform
 
 def synthesize_frb(length=256, width_ms=5.0, dm=300.0, intensity=25.0, sample_rate_hz=1000.0, seed=None):
     """
     Synthesize a single fast radio burst pulse with dispersion broadening and scattering tail.
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     t = np.arange(length) / sample_rate_hz
     waveform = np.zeros(length)
@@ -66,15 +61,14 @@ def synthesize_frb(length=256, width_ms=5.0, dm=300.0, intensity=25.0, sample_ra
             tau = 0.01 * (1.0 + 0.008 * dm)
             waveform[i] = intensity * np.exp(-0.5 * (dt / sigma)**2) * np.exp(-dt / tau)
             
-    waveform += np.random.normal(0, 0.2, length)
+    waveform += rng.normal(0, 0.2, length)
     return waveform
 
 def synthesize_hi_line(length=256, freq_mhz=1420.405, intensity=3.0, sample_rate_hz=1000.0, seed=None):
     """
     Synthesize a neutral hydrogen (HI) spectral line profile in frequency domain.
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     # HI line: Gaussian profile centered in the frequency band
     # Simulate a narrowband frequency profile
@@ -85,18 +79,17 @@ def synthesize_hi_line(length=256, freq_mhz=1420.405, intensity=3.0, sample_rate
     sigma = 0.15  # Line width
     waveform = intensity * np.exp(-0.5 * ((f - f_center) / sigma)**2)
     
-    waveform += np.random.normal(0, 0.1, length)
+    waveform += rng.normal(0, 0.1, length)
     return waveform
 
 def synthesize_quasar(length=256, intensity=10.0, seed=None):
     """
     Synthesize a stochastic red noise time series (random walk) representing quasar flux variability.
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     # Generate random walk: cumulative sum of random steps
-    steps = np.random.normal(0, 1.0, length)
+    steps = rng.normal(0, 1.0, length)
     waveform = np.cumsum(steps)
     
     # Normalize to zero mean and scale to intensity
@@ -106,7 +99,7 @@ def synthesize_quasar(length=256, intensity=10.0, seed=None):
         waveform = intensity * (waveform / std)
         
     # Add noise
-    waveform += np.random.normal(0, 0.2, length)
+    waveform += rng.normal(0, 0.2, length)
     return waveform
 
 def synthesize_rfi(length=256, rfi_type="CW", intensity=15.0, sample_rate_hz=1000.0, seed=None):
@@ -114,8 +107,7 @@ def synthesize_rfi(length=256, rfi_type="CW", intensity=15.0, sample_rate_hz=100
     Synthesize terrestrial radio frequency interference.
     Types: 'CW' (continuous wave tone), 'Sweep' (drifting tone), 'Burst' (pulsed noise).
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     t = np.arange(length) / sample_rate_hz
     waveform = np.zeros(length)
@@ -131,7 +123,7 @@ def synthesize_rfi(length=256, rfi_type="CW", intensity=15.0, sample_rate_hz=100
         waveform = intensity * np.sin(2.0 * np.pi * (f0 * t + 0.5 * beta * t**2))
     elif rfi_type == "Burst":
         # Packet-like noise bursts
-        waveform = np.random.normal(0, intensity, length)
+        waveform = rng.normal(0, intensity, length)
         # Apply envelope (duty cycle of burst)
         envelope = np.zeros(length)
         # 3 bursts
@@ -139,15 +131,14 @@ def synthesize_rfi(length=256, rfi_type="CW", intensity=15.0, sample_rate_hz=100
             envelope[start:end] = 1.0
         waveform = waveform * envelope
         
-    waveform += np.random.normal(0, 0.1, length)
+    waveform += rng.normal(0, 0.1, length)
     return waveform
 
 def synthesize_wow(length=256, intensity=30.0, sample_rate_hz=1000.0, seed=None):
     """
     Synthesize the Wow! signal anomaly: Gaussian transit envelope modulated with a continuous tone.
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     t = np.arange(length) / sample_rate_hz
     
@@ -160,15 +151,14 @@ def synthesize_wow(length=256, intensity=30.0, sample_rate_hz=1000.0, seed=None)
     carrier = np.sin(2.0 * np.pi * 80.0 * t)
     
     waveform = intensity * transit_envelope * carrier
-    waveform += np.random.normal(0, 0.1, length)
+    waveform += rng.normal(0, 0.1, length)
     return waveform
 
 def synthesize_blc1(length=256, intensity=15.0, sample_rate_hz=1000.0, seed=None):
     """
     Synthesize BLC1 anomaly: narrow frequency tone with slow linear drift.
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     t = np.arange(length) / sample_rate_hz
     
@@ -178,15 +168,14 @@ def synthesize_blc1(length=256, intensity=15.0, sample_rate_hz=1000.0, seed=None
     phase = 2.0 * np.pi * (f0 * t + 0.5 * drift_rate * t**2)
     
     waveform = intensity * np.sin(phase)
-    waveform += np.random.normal(0, 0.1, length)
+    waveform += rng.normal(0, 0.1, length)
     return waveform
 
 def synthesize_arecibo(length=256, intensity=22.0, sample_rate_hz=1000.0, seed=None):
     """
     Synthesize Arecibo message echo anomaly: binary frequency shift keying (FSK).
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     t = np.arange(length) / sample_rate_hz
     waveform = np.zeros(length)
@@ -202,13 +191,14 @@ def synthesize_arecibo(length=256, intensity=22.0, sample_rate_hz=1000.0, seed=N
         freq = 150.0 if bit == 1 else 90.0
         waveform[start:end] = intensity * np.sin(2.0 * np.pi * freq * t[start:end])
         
-    waveform += np.random.normal(0, 0.2, length)
+    waveform += rng.normal(0, 0.2, length)
     return waveform
 
 def generate_waveform_by_class(origin_class, signal_id, freq_mhz=1420.4, intensity=10.0, seed=None):
     """
     Dispatcher to generate a 256-sample physical waveform vector matching the source class or specific anomaly ID.
     """
+    rng = np.random.default_rng(seed)
     # Check for specific historical anomalies first
     if signal_id == "ANOMALY_WOW_1977":
         return synthesize_wow(intensity=intensity, seed=seed)
@@ -232,7 +222,7 @@ def generate_waveform_by_class(origin_class, signal_id, freq_mhz=1420.4, intensi
         return synthesize_quasar(intensity=intensity, seed=seed)
     elif origin_class == "Interference" or "RFI" in signal_id:
         # Choose a random RFI subtype
-        rfi_type = random.choice(["CW", "Sweep", "Burst"])
+        rfi_type = ["CW", "Sweep", "Burst"][int(rng.integers(0, 3))]
         return synthesize_rfi(rfi_type=rfi_type, intensity=intensity, seed=seed)
     else:
         # Default fallback is noise-modulated baseline
@@ -244,29 +234,28 @@ def synthesize_from_htru2(profile_mean, profile_std, profile_skew, profile_kurt,
     of a real HTRU2 candidate. Uses a Cornish-Fisher expansion to modulate the underlying
     carrier distribution based on target skewness and kurtosis parameters.
     """
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
         
     length = 256
     
     # 1. Base carrier generation
     if class_label == 1:
         # Pulsar carrier: Gaussian pulse train with random period and noise
-        period = np.random.uniform(2.0, 5.0)
-        pulse_width = np.random.uniform(0.1, 0.3)
+        period = rng.uniform(2.0, 5.0)
+        pulse_width = rng.uniform(0.1, 0.3)
         t = np.linspace(0, 10, length)
         phase = (t % period) / period
         dist = np.minimum(np.abs(phase - 0.5), 1.0 - np.abs(phase - 0.5))
         sigma = (pulse_width / period) / 2.0
         raw_wave = np.exp(-0.5 * (dist / sigma)**2) if sigma > 0 else np.zeros(length)
         # Add baseline noise to allow Cornish-Fisher expansion to modify statistical structure
-        raw_wave += np.random.normal(0, 0.1, length)
+        raw_wave += rng.normal(0, 0.1, length)
     else:
         # RFI/Noise carrier: continuous wave carrier with noise
         t = np.linspace(0, 1, length)
-        freq = np.random.choice([50.0, 120.0, 240.0])
+        freq = rng.choice([50.0, 120.0, 240.0])
         raw_wave = np.sin(2.0 * np.pi * freq * t)
-        raw_wave += np.random.normal(0, 0.3, length)
+        raw_wave += rng.normal(0, 0.3, length)
 
     # 2. Standardize base wave
     mean_raw = np.mean(raw_wave)
@@ -274,7 +263,7 @@ def synthesize_from_htru2(profile_mean, profile_std, profile_skew, profile_kurt,
     if std_raw > 0:
         x = (raw_wave - mean_raw) / std_raw
     else:
-        x = np.random.normal(0, 1, length)
+        x = rng.normal(0, 1, length)
 
     # 3. Cornish-Fisher expansion for skewness and kurtosis
     # Skew transform
@@ -290,7 +279,7 @@ def synthesize_from_htru2(profile_mean, profile_std, profile_skew, profile_kurt,
     if std_z > 0:
         z_standard = (z - mean_z) / std_z
     else:
-        z_standard = np.random.normal(0, 1, length)
+        z_standard = rng.normal(0, 1, length)
         
     w_final = profile_mean + z_standard * profile_std
     return w_final

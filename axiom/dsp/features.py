@@ -319,11 +319,11 @@ def physics_map_htru2_features(sig_type, dm=0.0, snr=10.0, seed=None):
             -> anchored to the INTERFERENCE (RFI) cluster.
         'Narrowband', 'Telemetry', 'Transmitted', 'Unknown'
             -> returns None. A narrowband carrier is genuinely off the HTRU2
-               pulsar/RFI manifold (no dispersion sweep, symmetric tone), but we
-               do NOT plant a fixed off-manifold anchor (that would make OOD
-               separation a by-construction guarantee). The anomaly verdict for
-               such sources must come from their REAL measured spectrogram via
-               the descriptor-conformal / chaos paths in ``evaluate_ood``.
+               pulsar/RFI manifold (no dispersion sweep, symmetric tone), so
+               this layer makes NO placement decision for it. The caller
+               (``evaluate_ood``) applies its own documented deterministic
+               placement for such records, tracked per-signal in its
+               ``anchored_mask``.
     dm : float
         Dispersion measure (pc cm^-3). Drives whether a dispersed pulse is
         astrophysical (DM > 0) or a terrestrial tone (DM = 0).
@@ -379,12 +379,14 @@ def physics_map_htru2_features(sig_type, dm=0.0, snr=10.0, seed=None):
     # and a symmetric tonal profile, so it is genuinely off the HTRU2 pulsar/RFI
     # manifold. Historically this branch *planted* a fixed off-manifold vector
     # (e.g. [30,10,0,0,0.5,5,0,0]) and then let the density estimator "discover"
-    # it — a by-construction guarantee, not a measurement. That is removed.
+    # it -- a by-construction guarantee, not a measurement. That is removed from
+    # THIS layer: we return None and make no placement decision here.
     #
-    # Instead we return None. The caller (``evaluate_ood``) then (a) never feeds a
-    # hand-placed anchor into the 8-D density test, and (b) relies on the signal's
-    # REAL measured spectrogram (frequency-resolved descriptors + chaos order) for
-    # the anomaly verdict via the descriptor-conformal path. If no real
-    # spectrogram is available the record degrades to a neutral natural exemplar
-    # so the 8-D density does not falsely separate it.
+    # The caller (``evaluate_ood``) owns the placement decision for unmappable
+    # records and applies its documented deterministic carrier placement
+    # (``_NARROWBAND_OFFMANIFOLD_ANCHOR``), tracked per-signal in
+    # ``anchored_mask``. The anomaly verdict still comes from the density
+    # estimator plus the conformal calibration -- never from the placement
+    # alone -- and records WITH a real spectrogram are additionally judged on
+    # their measured descriptors via the descriptor-conformal path.
     return None

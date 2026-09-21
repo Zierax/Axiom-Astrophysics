@@ -50,7 +50,7 @@ from axiom.stats.chaos import compute_chaos_descriptor
 # Be explicit about what this is: HAND-SPECIFIED coordinates, chosen from
 # carrier physics (no dispersion -> dmsnr moments ~0; symmetric tonal
 # profile -> low mean, narrow std, ~0 skew/kurtosis). It is NOT measured
-# data and NOT a detection guarantee — the density estimator and the
+# data and NOT a detection guarantee -- the density estimator and the
 # conformal calibration still decide the verdict (had real survey sources
 # occupied this region, the point would score as on-manifold). Records
 # placed here are tracked in the returned ``anchored_mask`` so reports can
@@ -68,8 +68,8 @@ _NARROWBAND_OFFMANIFOLD_ANCHOR = np.array([
 ], dtype=np.float64)
 
 # Genuine natural dynamic spectra used as the real descriptor-conformal null.
-# These are provenance-pinned telescope observations (FRB, broadband RFI) —
-# never synthetic — so the primary novelty path compares each candidate against
+# These are provenance-pinned telescope observations (FRB, broadband RFI) --
+# never synthetic -- so the primary novelty path compares each candidate against
 # REAL natural / interference morphology, not a fabricated broadband blob.
 #
 # NOTE: the pulsar B0329+54.fil is deliberately excluded from this null. Pulsars

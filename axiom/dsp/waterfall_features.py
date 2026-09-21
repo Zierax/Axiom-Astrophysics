@@ -11,7 +11,11 @@ measured properties rather than on synthetic feature geometry.
 """
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 __all__ = [
     "compute_waterfall_features",
@@ -464,3 +468,28 @@ class DescriptorConformalDetector:
         n = self._null_scores.size
         n_ge = int(np.sum(self._null_scores >= s))
         return (1.0 + n_ge) / (n + 1.0)
+
+    def p_value_loo(self, features: dict) -> float:
+        """Leave-one-out p-value for a test point that is itself in the null.
+
+        Removes one null occurrence of the test point's own score before
+        applying the standard conformal formula, so the null does not contain
+        the point being tested::
+
+            p_loo(x) = (1 + #{null \\ {x} : s >= s(x)}) / n_null
+
+        The score is computed by the same function on the same dict that
+        built the null entry, so the match is exact. If no equal score is
+        found (caller error — the point is not actually in the null), falls
+        back to the standard :meth:`p_value` and logs at debug level.
+        """
+        if not self._fitted or not features:
+            return 1.0
+        s = float(waterfall_narrowband_score(features))
+        hits = np.flatnonzero(self._null_scores == s)
+        if hits.size == 0:
+            log.debug("p_value_loo: own score not in null; using standard p-value")
+            return self.p_value(features)
+        null = np.delete(self._null_scores, hits[0])
+        n_ge = int(np.sum(null >= s))
+        return (1.0 + n_ge) / (null.size + 1.0)

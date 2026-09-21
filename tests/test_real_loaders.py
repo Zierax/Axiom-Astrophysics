@@ -266,3 +266,79 @@ def test_waterfall_noise_matches_documented_background_formula():
     assert feats["peak_snr"] == pytest.approx(expected_peak, rel=1e-9)
     expected_occ = float(np.mean(chan > (med + 5.0 * noise)))
     assert feats["occupancy"] == pytest.approx(expected_occ, rel=1e-9)
+
+
+def _tone_features(concentration: float) -> dict:
+    """Minimal descriptor dict with a controlled narrowband score."""
+    return {
+        "concentration": concentration,
+        "spectral_flatness": 0.0,
+        "spectral_kurtosis": 0.0,
+        "sub_bin_flatness": 1.0,
+        "slice_kurtosis": 0.0,
+        "occupancy": 1.0,
+    }
+
+
+def test_descriptor_loo_removes_only_own_score():
+    """Leave-one-out p-value must exclude exactly the test point's score."""
+    from axiom.dsp.waterfall_features import (
+        DescriptorConformalDetector,
+        waterfall_narrowband_score,
+    )
+
+    feats = [_tone_features(c) for c in (0.2, 0.5, 0.9)]
+    scores = sorted(waterfall_narrowband_score(f) for f in feats)
+    assert len(set(scores)) == 3  # distinct, so removal is unambiguous
+    det = DescriptorConformalDetector().fit(feats)
+
+    # Middle point: standard p counts all 3; LOO counts the other 2.
+    s = scores[1]
+    n_ge_all = sum(1 for q in scores if q >= s)
+    n_ge_loo = sum(1 for q in scores if q >= s) - 1
+    assert det.p_value(feats[1]) == pytest.approx((1.0 + n_ge_all) / 4.0)
+    assert det.p_value_loo(feats[1]) == pytest.approx((1.0 + n_ge_loo) / 3.0)
+
+    # Most anomalous point: nothing else exceeds it.
+    assert det.p_value_loo(feats[2]) == pytest.approx(1.0 / 3.0)
+
+    # Point never in the null: LOO degrades to the standard p-value.
+    outsider = _tone_features(0.99)
+    assert det.p_value_loo(outsider) == pytest.approx(det.p_value(outsider))
+
+
+def test_htru2_pvals_use_pooled_split_conformal_null(tmp_path):
+    """HTRU2 p-values must come from a null fixed before seeing test points."""
+    from sklearn.datasets import make_classification
+    from sklearn.model_selection import train_test_split
+
+    from axiom.ml.density import AnomalyDensityEstimator
+    from axiom.stats.calibration import ConformalCalibrator
+    from axiom.stats.ood_eval import evaluate_ood
+
+    X, y = make_classification(
+        n_samples=2000, n_features=8, n_informative=6,
+        n_classes=2, weights=[0.9, 0.1], random_state=42,
+    )
+    # real_features override: production scores exactly these rows.
+    real_features = {f"nat_{i}": X[i] for i in range(3)}
+    records = [(f"nat_{i}", f"origin_{i}", "Pulsar", 10.0, 10.0, "Natural")
+               for i in range(3)]
+    result = evaluate_ood(X, y, records, seed=42, real_features=real_features)
+
+    # Replicate the documented production path: same splits, density fit on
+    # the sub-split only, pooled max-score null through the single
+    # calibrator implementation.
+    X_tr, _, y_tr, _ = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42)
+    X_fit, X_cal, y_fit, y_cal = train_test_split(
+        X_tr, y_tr, test_size=0.25, stratify=y_tr, random_state=42)
+    density = AnomalyDensityEstimator(
+        n_components=5, cache_path=str(tmp_path / "density_check.pkl"))
+    density.fit(X_fit, y_fit)
+    assert density.per_class  # pooled max-score path requires per-class fit
+    calibrator = ConformalCalibrator(cache_path=str(tmp_path / "cal_check.pkl"))
+    calibrator.fit(density.log_prob(X_cal))
+    expected = calibrator.compute_p_value(
+        density.log_prob(np.asarray([X[i] for i in range(3)])))
+    np.testing.assert_allclose(result["htru2_pvals"], expected, rtol=1e-12)

@@ -39,6 +39,7 @@ from axiom.ml.cnn import CosmicSignalCNN
 from axiom.ml.density import AnomalyDensityEstimator
 from axiom.ml.ensemble import AxiomEnsemble
 from axiom.stats.arbitration import SignalArbitrator
+from axiom.stats.calibration import ConformalCalibrator
 from axiom.stats.chaos import compute_chaos_descriptor
 
 # Genuine natural dynamic spectra used as the real descriptor-conformal null.
@@ -263,21 +264,22 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
     scores = density.log_prob(feats)
     ood_mask = scores < (natural_min - ood_margin)
 
-    cal_p = density.log_prob_per_class(X_cal, 1)
-    cal_r = density.log_prob_per_class(X_cal, 0)
-    htru2_pvals = np.zeros(len(feats))
-    for i in range(len(feats)):
-        sp = density.log_prob_per_class(feats[i:i + 1], 1)[0]
-        sr = density.log_prob_per_class(feats[i:i + 1], 0)[0]
-        cal = cal_p if sp >= sr else cal_r
-        s = max(sp, sr)
-        # Conformal p-value: anomalous = LOW density (rare under null).
-        # Standard conformal: count calibration points with nonconformity
-        # score >= test score.  With ε = -log p (higher = more anomalous)
-        # and raw log-probabilities (higher = more normal), ε_cal >= ε_test
-        # is equivalent to cal <= s.  This matches the convention used in
-        # ConformalCalibrator (calibration.py:61) and historical/__init__.py.
-        htru2_pvals[i] = (int(np.sum(cal <= s)) + 1) / (len(cal) + 1)
+    # Pooled split-conformal calibration on the max class log-density s(x).
+    # The null is the held-out calibration set's max-scores, fixed BEFORE any
+    # test point is seen (the premise of the conformal rank argument). A
+    # per-test-point "nearest class" null is deliberately NOT used: choosing
+    # the null with the test point makes the null data-dependent and voids
+    # the finite-sample guarantee. Routed through ConformalCalibrator so the
+    # reporting path shares the single tested implementation.
+    calibrator = ConformalCalibrator(
+        # Isolated, non-shared cache so this lane never reads a calibrator
+        # fitted on a different feature space (same rationale as the density
+        # cache above).
+        cache_path=str(_PKG_ROOT / "data" / "models" / "conformal_eval_ood.pkl"),
+    )
+    calibrator.fit(density.log_prob(X_cal))
+    htru2_pvals = np.asarray(
+        calibrator.compute_p_value(density.log_prob(feats)), dtype=np.float64)
 
     # ------------------------------------------------------------------
     # Primary-path fusion: a self-consistent descriptor-conformal p-value
@@ -293,10 +295,12 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
     # their verdict rests on the HTRU2 path exactly as before.
     # ------------------------------------------------------------------
     wf = waterfall_features or {}
-    null_features = [
-        wf[name] for (name, _oc, _st, _dm, _snr, role), _ in zip(records, feats)
+    null_items = [
+        (name, wf[name]) for (name, _oc, _st, _dm, _snr, role) in records
         if role in ("Natural", "Interference") and name in wf and wf[name]
     ]
+    null_names = {name for name, _ in null_items}
+    null_features = [f for _, f in null_items]
     # The descriptor-conformal null is the REAL natural / interference population's
     # own measured spectrogram descriptors. We do NOT pad it with synthetic
     # broadband Gaussian blobs: a fabricated null would let the detector report
@@ -307,12 +311,10 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
     # source is available the descriptor path is disabled (p_descriptor = 1,
     # neutral) and the verdict rests on the HTRU2 / chaos paths.
     #
-    # NOTE: The null includes ALL natural/interference signals, including each
-    # signal being tested.  This means a natural signal's own features are in
-    # the null when computing its p-value, inflating the p-value by
-    # ~1/(|null|+1).  This is a small *conservative* bias (natural signals
-    # appear slightly less anomalous than they should), not a safety issue.
-    # A full leave-one-out correction is deferred to future work.
+    # NOTE: a natural/interference test point is itself a member of the audit
+    # null. Its p-value is therefore computed leave-one-out (its own score
+    # removed from the null), which keeps the split-conformal premise intact
+    # at the cost of one null point. The residual effect is conservative.
     if not null_features:
         null_features = _natural_waterfall_null()
     desc_detector = DescriptorConformalDetector(alpha=0.05).fit(null_features)
@@ -325,7 +327,10 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
         p_h = float(htru2_pvals[i])
         feat_dict = wf.get(name)
         if desc_detector.fitted and feat_dict:
-            p_d = float(desc_detector.p_value(feat_dict))
+            if name in null_names:
+                p_d = float(desc_detector.p_value_loo(feat_dict))
+            else:
+                p_d = float(desc_detector.p_value(feat_dict))
         else:
             p_d = 1.0
         desc_pvals[i] = p_d

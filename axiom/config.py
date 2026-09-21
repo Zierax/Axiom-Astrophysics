@@ -53,10 +53,6 @@ DEFAULT_CONFIG = {
         "bh_fdr_alpha": 0.05
     },
     "physics": {
-        # Weight of the physics-law term in the arbitrator's composite anomaly
-        # score (bounded contribution, kept below the p-value ceiling so physics
-        # refines rather than dominates the verdict).
-        "arbitrator_weight": 12.0,
         # Fold catalog DM / duty-cycle consistency laws into the physics score
         # (only where a measured DM / width / period is available).
         "use_catalog_laws": True,

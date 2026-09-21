@@ -91,3 +91,21 @@ class TestEvaluateOod:
         result = evaluate_ood(X, y, records, seed=42)
         if result["natural_fpr"] == 0.0:
             assert result["pass"] is True
+
+    def test_nonmask_anomaly_implies_fused_significance(self, htru2_like):
+        """Contract: the arbitrator receives Bonferroni-fused p-values, so any
+        Anomaly verdict NOT from the OOD-mask branch must satisfy
+        pvals (fused) <= conformal_alpha (0.05)."""
+        X, y = htru2_like
+        records = (
+            [_make_record(f"nat_{i}", role="Natural") for i in range(5)]
+            + [_make_record("anom", sig_type="Narrowband", dm=0.0, snr=50.0,
+                            role="Anomaly")]
+        )
+        result = evaluate_ood(X, y, records, seed=42)
+        for v, mask, p in zip(result["verdicts"], result["ood_mask"],
+                              result["pvals"]):
+            if v == "Anomaly" and not mask:
+                assert p <= 0.05, (
+                    f"non-mask Anomaly with fused p={p} > 0.05: "
+                    "arbitrator input is not Bonferroni-fused")

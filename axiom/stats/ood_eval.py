@@ -139,8 +139,7 @@ def _cnn_branch(waves, seed=42, train_waves=None, train_labels=None):
 
 
 def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
-                  real_features=None, real_waves=None, waterfall_features=None,
-                  physics_weight=None):
+                   real_features=None, real_waves=None, waterfall_features=None):
     """Run the full anomaly pipeline over a labelled OOD set.
 
     Parameters
@@ -321,7 +320,6 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
 
     pvals = np.zeros(len(feats))       # Bonferroni-fused p-values (primary)
     p_fisher = np.ones(len(feats))     # Fisher-fused p-values (supplementary)
-    p_min = np.ones(len(feats))        # min(p_h, p_d): verdict p-value
     desc_pvals = np.ones(len(feats))
     for i, (name, _oc, _st, _dm, _snr, _role) in enumerate(records):
         p_h = float(htru2_pvals[i])
@@ -349,11 +347,10 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
             p_fisher[i] = float(chi2.sf(T, 4))  # df = 2 * k = 4
         else:
             p_fisher[i] = 0.0
-        # The *verdict* p-value follows the documented design: a signal is off-
-        # manifold when it is rare in EITHER space, so the smaller of the two
-        # conformal p-values governs. min(p_h, p_d) < alpha already bounds the
-        # false-positive rate at alpha for "flag if either path is significant".
-        p_min[i] = float(min(p_h, p_d))
+        # The verdict p-value IS the Bonferroni-fused p-value: flagging on
+        # min(p_h, p_d) <= alpha would only bound FPR at 2*alpha. The
+        # arbitrator's conformal-Anomaly branch therefore receives pvals, and
+        # its guarantee (Theorem 2) holds exactly as documented.
 
     mapped_probs = np.zeros((len(feats), 3))
     mapped_probs[:, 0] = probs[:, 1]   # Pulsar -> Natural
@@ -378,22 +375,11 @@ def evaluate_ood(X, y, records, seed=42, ood_margin=5.0,
         entry["is_extragalactic"] = bool(ocls_ in ("FRB", "Anomaly_Tech"))
         physics_features[name] = entry
 
-    # Physics-law weight is configurable; default to the pipeline config value.
-    if physics_weight is None:
-        try:
-            from axiom.config import PipelineConfig
-            physics_weight = float(
-                PipelineConfig().get("physics.arbitrator_weight", 12.0))
-        except Exception as exc:
-            log.debug("Physics weight fallback: %s", exc)
-            physics_weight = 12.0
-
     arbitrator = SignalArbitrator(fdr_alpha=0.05, conformal_alpha=0.05)
     verdicts, _ = arbitrator.arbitrate(
-        oids, mapped_preds, mapped_probs, p_min, chaos, ocls,
+        oids, mapped_preds, mapped_probs, pvals, chaos, ocls,
         ood_mask=ood_mask, cnn_probs=cnn_probs,
         waterfall_features=waterfall_features, physics_features=physics_features,
-        physics_weight=physics_weight,
     )
 
     any_anom = any(r == "Anomaly" for r in roles)

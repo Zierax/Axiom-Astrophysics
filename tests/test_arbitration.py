@@ -69,3 +69,25 @@ def test_batch_fdr_control():
         ood_mask=np.zeros(n, dtype=bool),
     )
     assert set(verdicts) == {"Natural"}
+
+
+def test_significance_boundary_is_nonstrict():
+    """p == alpha must count as significant (discrete conformal p-values)."""
+    arb = _make_arbitrator()
+    probs = np.array([[0.99, 0.01, 0.0]])
+    verdicts, _ = arb.arbitrate(
+        ["sig"], np.array([0]), probs, np.array([0.05]), np.array([3.0]),
+        ["Pulsar"], ood_mask=np.array([False]),
+    )
+    assert verdicts[0] == "Anomaly"
+
+
+def test_nonsignificant_fused_p_not_anomaly():
+    """p > alpha with confident natural evidence must not be Anomaly."""
+    arb = _make_arbitrator()
+    probs = np.array([[0.99, 0.01, 0.0]])
+    verdicts, _ = arb.arbitrate(
+        ["sig"], np.array([0]), probs, np.array([0.06]), np.array([3.0]),
+        ["Pulsar"], ood_mask=np.array([False]),
+    )
+    assert verdicts[0] == "Natural"

@@ -235,9 +235,10 @@ re-fetch (which would otherwise hit a transient digest mismatch).
 
 To make verdicts rest on *astrophysics*, not only on learned manifold geometry,
 the arbitrator now consumes a **physics-law module** (`axiom/dsp/physics_rules.py`)
-and folds a `physics_score` term into the composite anomaly score (weight
-configurable via `physics.arbitrator_weight`, default 12.0, bounded below the
-p-value ceiling of 60). The laws are honest, bounded [0,1], and degrade to
+and folds a `physics_score` term into the composite anomaly score (equal-weighted
+with the other three evidence channels in the composite mean; a former
+`physics_weight` control was removed as dead — an A/B of 0 vs 12 had shown
+identical verdicts). The laws are honest, bounded [0,1], and degrade to
 neutral on missing inputs — no fabricated anchors:
 
 - **Tone-vs-dispersion contradiction law** (`technosignature_law_score`): a genuine
@@ -261,9 +262,9 @@ Anomaly).
 
 **Honest measured impact.** On the current real OOD audit (Voyager carriers +
 CHIME FRBs + real HTRU2 RFI + 22 unlabeled BL/stellar observations) an A/B of
-`physics_weight=0` vs `12` yields **identical** verdicts: Voyager TPR 100%, Natural
-FPR 0%, 5/22 unlabeled flagged off-manifold. The physics laws are a *guardrail*,
-not a metric booster: the real test set contains no physically-contradictory
+the-then `physics_weight=0` vs `12` yielded **identical** verdicts: Voyager TPR 100%, Natural
+FPR 0%, 5/22 unlabeled flagged off-manifold. The parameter was therefore removed
+— the physics laws are a *guardrail*, not a metric booster: the real test set contains no physically-contradictory
 "claimed-natural-but-tonal" case, so no verdict changes — which is itself evidence
 of clean data. The laws are verified to fire on synthetic adversarial inputs
 (`tests/test_physics_rules.py`: a tonal DM=0 source claimed Natural is correctly

@@ -17,6 +17,12 @@ class SignalArbitrator:
     (chaos) descriptors.  Applies Benjamini-Hochberg FDR control to bound the
     false-discovery rate and emits the final audit verdict.
 
+    Guarantee scope (load-bearing): ONLY the ``p_values[i] <= conformal_alpha``
+    branch carries the finite-sample conformal FPR guarantee, and only when
+    the caller passes Bonferroni-fused per-signal p-values. The OOD-mask
+    branch, the BH/Candidate branches, and the composite-score (CAES) branch
+    are heuristic triage with no formal FPR control.
+
     Verdict taxonomy: "Natural", "Interference", "Anomaly",
     "Candidate — Requires Review".
     """
@@ -68,8 +74,7 @@ class SignalArbitrator:
     # ------------------------------------------------------------------
     def arbitrate(self, signal_ids, meta_predictions, meta_probs, p_values,
                    chaos_scores, origin_classes, ood_mask=None, cnn_probs=None,
-                   waterfall_features=None, physics_features=None,
-                   physics_weight=12.0):
+                   waterfall_features=None, physics_features=None):
         """Arbitrate final verdicts for a batch of signals.
 
         Parameters
@@ -77,7 +82,11 @@ class SignalArbitrator:
         signal_ids : sequence of str
         meta_predictions : (N,) ensemble output classes (0:Natural,1:Interf,2:Anomaly)
         meta_probs : (N, 3) ensemble probabilities
-        p_values : (N,) conformal p-values
+        p_values : (N,) conformal p-values. CONTRACT: these MUST be the
+            Bonferroni-fused per-signal p-values
+            (``min(1, 2*min(p_htru2, p_desc))``). The ``<= conformal_alpha``
+            Anomaly branch controls FPR at ``conformal_alpha`` only under
+            this contract; passing raw min-p values would double the bound.
         chaos_scores : (N,) legacy Lyapunov OR (N, D) descriptor from
             `compute_chaos_descriptor`
         origin_classes : sequence of str (catalogue / physical class)
@@ -95,10 +104,6 @@ class SignalArbitrator:
             ``is_extragalactic``). Signals without an entry receive a neutral
             physics score. When catalog physics is absent the technosignature law
             (spectrogram-only) still applies.
-        physics_weight : float
-            Weight of the physics-law term in the composite anomaly score
-            (bounded contribution). Default 12.0 (kept below the p-value term's
-            60.0 ceiling so physics refines rather than dominates the verdict).
 
         Returns
         -------
@@ -177,7 +182,7 @@ class SignalArbitrator:
             #
             # Conformal surprisal: E_conf = min(50, -10 * log10(p)) [0..50 pts].
             # This is the dominant term: under H0, p ~ U(0,1); p=0.05 -> 13 pts,
-            # p=1e-5 -> 50 pts cap.
+            # p=1e-5 -> 50 pts cap. The 1e-5 floor caps the term at exactly 50.
             p_score = min(50.0, -10.0 * np.log10(max(p_val, 1e-5)))
             # Supplementary evidence weight (bounded [0, 1]): combines model
             # posterior anomaly probability, nonlinear-dynamics order, frequency-
@@ -202,7 +207,10 @@ class SignalArbitrator:
 
             # 2. Verdict logic
             is_bh_anomaly = bool(bh_rejected[i])
-            is_significant_anomaly = p_val < self.conformal_alpha
+            # Non-strict comparison: conformal p-values are discrete multiples
+            # of 1/(N_cal+1), so equality with alpha is attainable and must
+            # count as significant to match the published rule (P <= alpha).
+            is_significant_anomaly = p_val <= self.conformal_alpha
 
             conf_natural = prob_vec[0]
             conf_interference = prob_vec[1]
@@ -212,6 +220,11 @@ class SignalArbitrator:
             is_ood = bool(ood_mask[i]) if ood_mask is not None else False
 
             if is_ood:
+                # NON-CONFORMAL heuristic trigger: absolute density distance
+                # below any real survey candidate. Carries NO finite-sample
+                # FPR guarantee (only the p-value branch below does). Kept
+                # first so a catastrophically off-manifold signal cannot be
+                # talked back on-manifold by classifier confidence.
                 verdict = "Anomaly"
             elif is_significant_anomaly:
                 # A signal whose conformal p-value is significant (off-manifold

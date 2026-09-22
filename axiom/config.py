@@ -51,11 +51,6 @@ DEFAULT_CONFIG = {
         "lyapunov_embedding_dim": 5,
         "lyapunov_delay": 2,
         "bh_fdr_alpha": 0.05
-    },
-    "physics": {
-        # Fold catalog DM / duty-cycle consistency laws into the physics score
-        # (only where a measured DM / width / period is available).
-        "use_catalog_laws": True,
     }
 }
 

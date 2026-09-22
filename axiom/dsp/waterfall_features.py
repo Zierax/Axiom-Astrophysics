@@ -313,6 +313,10 @@ def carrier_detection_score(spec: np.ndarray) -> float:
     channel's power spectrum, and amplitude stability. A pure carrier yields high
     values on all three metrics.
 
+    Scope: standalone diagnostic (used by offline featurization tooling). It is
+    NOT an input to the arbitrator verdict or the composite score — those use
+    :func:`waterfall_narrowband_score` via :class:`FrequencyResolvedScorer`.
+
     Returns a bounded score in [0, 1] where higher = more carrier-like.
     """
     spec = np.asarray(spec, dtype=np.float64)
@@ -369,7 +373,10 @@ class FrequencyResolvedScorer:
     """Caches per-signal waterfall features and yields narrowband scores.
 
     Scores are keyed by signal name. Signals without a feature entry receive a
-    neutral score (0.5) so the term is well-defined everywhere.
+    neutral score (0.5) so the term is well-defined everywhere. Note 0.5 is the
+    maximum-entropy neutral for this bounded morphology *score* (higher = more
+    tonal); it is a different quantity from the conformal *p-value*, whose
+    neutral is 1.0 (never anomalous) in :class:`DescriptorConformalDetector`.
     """
 
     def __init__(self, features: dict | None = None):

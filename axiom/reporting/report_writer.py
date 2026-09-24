@@ -223,7 +223,7 @@ def _detail_suite_7(s, charts, rel) -> str:
         return "\n".join(L)
     c = s["classification"]
     o = s["ood"]
-    L += [f"**{s['n_objects']} independent real objects** through one {s['n_features']}-D "
+    L += [f"**{s['n_objects']} catalogued entries** through one {s['n_features']}-D "
           "commensurate physical featurizer; cross-validation keyed on each object's "
           "unique group id (leakage-free by construction).", "",
           "## Population composition", "", "| Class | Objects |", "|---|---|"]
@@ -333,8 +333,8 @@ _METHODOLOGY = """# Methodology & Caveats
 - Environment (versions, platform) is recorded in `summary.json` under `meta`.
 
 ## Suites
-1. **In-distribution (HTRU2).** Stratified 5-fold CV of the AXIOM stacking
-   ensemble. A separate 20% hold-out drives the confusion matrix, ROC, PR,
+1. **In-distribution (HTRU2).** Stratified 5-fold CV of the AXIOM HGBT-core
+   classifier. A separate 20% hold-out drives the confusion matrix, ROC, PR,
    reliability and probability-separation figures, and an RF learning curve.
 2. **Ablation.** Contribution of each ensemble component and feature block on a
    stratified 80/20 split.
@@ -351,7 +351,7 @@ _METHODOLOGY = """# Methodology & Caveats
    against the strongest baseline, plus a Wilson 95% accuracy interval.
 6. **Lane 1 — real-waterfall manifold OOD.** Real, provenance-pinned dynamic
    spectra through one 12-D featurizer; cross-conformal AUROC and calibrated FPR.
-7. **Lane 2 — population-scale catalog manifold.** ~19k independent real objects
+7. **Lane 2 — population-scale catalog manifold.** ~19k catalogued entries
    (ATNF, CHIME/FRB, HTRU2) through one commensurate physical featurizer.
    Multiclass typing uses StratifiedGroupKFold keyed on each object's unique
    group id (leakage-free); a leave-class-out conformal test withholds

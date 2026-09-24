@@ -374,7 +374,7 @@ def chart_population_dist(run, d) -> Optional[ChartSpec]:
         ax.text(i, counts[n] * 1.05, str(counts[n]), ha="center", fontsize=9)
     return ChartSpec(_save(fig, d, "16_population_distribution.png"),
                      "Population class distribution",
-                     "19k+ independent real objects from ATNF, CHIME/FRB, HTRU2.",
+                     "19k+ catalogued entries from ATNF, CHIME/FRB, HTRU2.",
                      "suite_7")
 
 

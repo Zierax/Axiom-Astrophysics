@@ -7,7 +7,12 @@ Detailed specifications of core public packages and interfaces in the `axiom` mo
 ## 1. Machine Learning (`axiom.ml`)
 
 ### `AxiomEnsemble`
-Stacked generalization model combining Random Forest and HistGradientBoosting classifiers.
+HGBT-core classifier for the binary HTRU2 lane (a stacking design was
+abandoned: `predict` uses only the HGBT core with `max_iter=100,
+max_depth=6`; Random Forest / ExtraTrees are fit but unused diversity
+learners). Population-scale classification uses a plain
+`HistGradientBoostingClassifier(max_iter=300)` instead (see
+`axiom.stats.group_ood`).
 ```python
 from axiom.ml.ensemble import AxiomEnsemble
 
@@ -34,7 +39,8 @@ class_scores = density.log_prob_per_class(X_test, class_idx)
 ## 2. Statistical Calibration (`axiom.stats`)
 
 ### `ConformalCalibrator`
-Split conformal prediction calibrator producing valid p-values under covariate shift.
+Split conformal prediction calibrator producing valid p-values under
+exchangeability (held-out calibration null fixed before test points).
 ```python
 from axiom.stats.calibration import ConformalCalibrator
 
@@ -44,10 +50,15 @@ p_values = calibrator.compute_p_value(test_log_probs)
 ```
 
 ### `SignalArbitrator`
-Benjamini-Hochberg FDR control and composite anomaly verdict arbitrator. The
-`ood_mask` (pre-computed by the absolute-OOD rule) restricts anomaly candidacy
-to signals lying outside the natural population manifold; `cnn_probs` is an
-optional learned waveform branch fused with the ensemble via geometric mean.
+Branch-ordered verdict arbitrator over fused probabilities, conformal
+p-values, chaos, waterfall and physics evidence. Guarantee scope: ONLY the
+`p_values[i] <= conformal_alpha` branch carries finite-sample FPR control,
+and only when passed Bonferroni-fused p-values; the OOD-mask, BH/Candidate
+and composite branches are heuristic triage. Benjamini-Hochberg scores feed
+the Candidate branch only. The `ood_mask` (absolute density distance) is a
+sufficient non-conformal Anomaly trigger, not a necessary one. `cnn_probs`
+is an optional learned waveform branch fused with the ensemble via
+geometric mean.
 ```python
 from axiom.stats.arbitration import SignalArbitrator
 
@@ -60,7 +71,8 @@ verdicts, anomaly_scores = arbitrator.arbitrate(
 
 - `meta_predictions` / `meta_probs`: 3-class mapping (Natural / Interference /
   Anomaly) where the Anomaly column is `1 - p_value`.
-- `ood_mask`: boolean array; only `True` entries may receive an "Anomaly" verdict.
+- `ood_mask`: boolean array; `True` forces an "Anomaly" verdict via the
+  non-conformal absolute-distance branch (no p-value involved).
 - `cnn_probs`: optional `(N, 3)` probabilities from `CosmicSignalCNN`; fused with
   `meta_probs` by geometric mean when provided and valid.
 - `chaos_scores`: `(N,)` legacy Lyapunov scalars **or** `(N, D)` descriptors from
@@ -122,7 +134,7 @@ Assemble the population-scale manifold (feature matrix, class codes, unique
 ```python
 from axiom.data.population import build_population
 
-pop = build_population(cache=True)          # 19,252 independent objects
+pop = build_population(cache=True)          # 19,252 catalogued entries
 X, y, groups = pop.X, pop.y, pop.group_ids
 ```
 
@@ -164,15 +176,16 @@ from axiom.dsp.waterfall_features import (
     descriptor_vector, DescriptorConformalDetector,
 )
 
-feat = compute_waterfall_features(spec)        # dict of 8 descriptors
+feat = compute_waterfall_features(spec)        # dict of 10 descriptors
 score = waterfall_narrowband_score(feat)       # [0, 1]
-vec = descriptor_vector(feat)                  # fixed-order (8,) numeric vector
+vec = descriptor_vector(feat)                  # fixed-order (10,) numeric vector
 ```
 
 ### `DescriptorConformalDetector`
-Split-conformal detector over the 8-D descriptor vector. The "normal" null is the
+Split-conformal detector over the 10-descriptor vector. The "normal" null is the
 natural/broadband population; `p_value` is finite-sample-valid and returns `1.0`
-(neutral) for unfitted detectors or empty descriptors.
+(neutral) for unfitted detectors or empty descriptors. `p_value_loo` removes one
+occurrence of the test point's own score for audit members of the null.
 ```python
 det = DescriptorConformalDetector(alpha=0.05).fit(natural_descriptor_dicts)
 p = det.p_value(feat)        # small => off-manifold / tonal relative to natural
@@ -189,8 +202,10 @@ from axiom.stats.ood_eval import evaluate_ood
 res = evaluate_ood(X, y, records, seed=42,
                    real_features=real_features, real_waves=real_waves,
                    waterfall_features=waterfall_features)
-# res keys: verdicts, roles, names, pvals (fused), htru2_pvals,
+# res keys: verdicts, roles, names, pvals (Bonferroni-fused), htru2_pvals,
 #           descriptor_pvals, descriptor_fusion_active, ood_mask,
+#           anchored_mask (True where the hand-specified carrier placement
+#           was used instead of measured features),
 #           anomaly_tpr, natural_fpr, pass
 ```
 Records are `(name, origin_class, sig_type, dm, snr, true_role)` tuples with
@@ -203,7 +218,7 @@ The self-consistent real-waterfall manifold. `build_manifold` featurises real
 GUPPI/filterbank observations with `extract_features`; `ManifoldConformalDetector`
 fits a robust per-normal-class Ledoit–Wolf precision and scores by the minimum
 standardised Mahalanobis distance; `evaluate_manifold_ood` runs cross-conformal
-OOD with exact finite-sample FDR control.
+OOD with valid finite-sample coverage (BH scores feed candidate triage only).
 ```python
 from axiom.data.populations import build_manifold
 from axiom.stats.manifold_ood import evaluate_manifold_ood, ManifoldConformalDetector
@@ -226,8 +241,8 @@ from axiom.stats.group_ood import (
     evaluate_population_classification, evaluate_population_ood,
 )
 
-clf = evaluate_population_classification()   # MCC 0.817
-ood = evaluate_population_ood(novel_class="FRB")  # AUROC 0.9998
+clf = evaluate_population_classification()   # MCC 0.9689 (HGBT-300)
+ood = evaluate_population_ood(novel_class="FRB")  # AUROC 0.9997
 ```
 
 ---
@@ -235,8 +250,9 @@ ood = evaluate_population_ood(novel_class="FRB")  # AUROC 0.9998
 ## 6. Reporting Pipeline (`axiom.reporting`)
 
 Deterministic generator turning every validation suite into the
-`benchmarks/` artifact tree. No figures are fabricated — every metric is
-computed from real data under a fixed seed.
+`benchmarks/` artifact tree. Every metric is computed from the codebase under
+a fixed seed; synthetic fallbacks engage only offline (gated, seeded, logged)
+and sensitivity audits using them are disclosed as such.
 
 ### `collect_all` / `RunData`
 Runs all 7 suites and returns a `RunData` (`summary` JSON record + `arrays`

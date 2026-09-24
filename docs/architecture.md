@@ -10,7 +10,7 @@ The system is structured as follows:
 
 ```mermaid
 graph TD
-    A[Raw HTRU2 Candidates] --> B[AxiomEnsemble Stacking Classifier]
+    A[Raw HTRU2 Candidates] --> B[AxiomEnsemble HGBT-Core Classifier]
     A --> C[AnomalyDensityEstimator GMM]
     B --> D[SignalArbitrator]
     C --> E[ConformalCalibrator]
@@ -37,7 +37,7 @@ graph TD
 ### Components:
 1. **`axiom.data`**: Handlers for HTRU2 datasets (robust local caching, validation splitting) and verified, provenance-pinned catalogs (`catalogs`, `population`) assembled into the population-scale manifold. Catalog cross-checks such as SIMBAD are optional and require `astroquery`; without it the system runs without live querying.
 2. **`axiom.dsp`**: HTRU2 waveform complexity feature extractors (fractal dimension, Lempel-Ziv complexity, Shannon entropy, drift rates, harmonic structure) and the commensurate Lane-2 physical featurizer `physical_features` (12-D DM/width/SNR/period/indicator vector).
-3. **`axiom.ml`**: Stacking ensemble classifier (Random Forest + Gradient Boosting stacked via Logistic Regression), Gaussian Mixture Model (GMM) density estimators, and a trainable 1-D CNN (`CosmicSignalCNN`, pure-NumPy backend).
+3. **`axiom.ml`**: HGBT-core binary classifier (`AxiomEnsemble`; a stacking design was abandoned — `predict` uses only the HGBT core, RF/ET are fit-but-unused), per-class GMM density estimators, population HGBT-300 classifier (`group_ood`), and a trainable 1-D CNN (`CosmicSignalCNN`, pure-NumPy backend).
 4. **`axiom.stats`**: Conformal calibrators mapping GMM scores to distribution-free p-values, nonlinear-dynamics chaos descriptors (`compute_chaos_descriptor`), the `SignalArbitrator`, and the leakage-free population evaluators (`group_ood`).
 5. **`axiom.reporting`**: Deterministic report generator — `collect` (re-runs every validation suite), `charts` (22 scientific figures), `report_writer` (markdown + JSON under `benchmarks/`). Replaces the old `Benchmark/` artifacts.
 
@@ -52,18 +52,21 @@ Every signal is placed onto the **HTRU2 8-dimensional survey manifold** (the 8
 real HTRU2 moments; the 9th column of the dataset is the class label) via
 `physics_map_htru2_features(signal_type, dm, snr, seed)`. Natural and
 interference sources are anchored to real HTRU2 exemplars; genuine narrowband
-carriers (Wow!, BLC1-style) are deliberately placed in an **out-of-manifold gap**
-so the density estimator can detect them as OOD. The mapped vector:
+carriers (Wow!, BLC1-style) carry no measured feature vector, so `evaluate_ood`
+applies a documented hand-specified off-manifold placement
+(`_NARROWBAND_OFFMANIFOLD_ANCHOR`), tracked per-signal in the returned
+`anchored_mask` with a loud warning — placed, not measured, and disclosed as
+such. The mapped vector:
 
 $$x = [p_{\text{mean}}, p_{\text{std}}, p_{\text{kurt}}, p_{\text{skew}},
       d_{\text{mean}}, d_{\text{std}}, d_{\text{kurt}}, d_{\text{skew}}]$$
 
-feeds both the stacking ensemble and the per-class density estimator.
+feeds both the HGBT-core classifier and the per-class density estimator.
 
 ### 2a-bis. Lane-2 population-scale physical manifold (primary population claim)
 For population-level validation the system bypasses the HTRU2 anchor entirely.
-`axiom.data.catalogs` + `axiom.data.population` assemble **19,252 independent real
-objects** (ATNF pulsars, CHIME/FRB bursts, HTRU2 RFI) from verified,
+`axiom.data.catalogs` + `axiom.data.population` assemble **19,252 catalogued
+entries** (ATNF pulsars, CHIME/FRB bursts, HTRU2 RFI) from verified,
 provenance-pinned catalogs, and `axiom.dsp.physical_features.featurize_frame` maps
 each object onto one commensurate 12-D physical vector:
 
@@ -98,16 +101,18 @@ $$z = [f_{\text{entropy}}, f_{\text{pe}}, f_{\text{higuchi}}, f_{\text{lz76}},
 Real observations are not only projected onto the 8-D HTRU2 manifold; their
 native 2-D spectrogram (frequency × time) is characterised directly by
 `axiom.dsp.waterfall_features.compute_waterfall_features`. For each real
-Breakthrough Listen GUPPI waterfall the module computes
+Breakthrough Listen GUPPI waterfall the module computes ten descriptors:
 **peak/integrated S/N**, **occupancy**, **spectral kurtosis**,
-**drift rate**, **bandwidth**, **channel concentration** (Gini) and
-**spectral flatness**.
+**drift rate**, **bandwidth**, **channel concentration** (Gini),
+**spectral flatness**, **sub-bin flatness** (peak ±1 channels), and
+**brightest-slice kurtosis**.
 
 These descriptors feed a **second, measurement-driven conformal p-value**, not
 just a soft composite term. `DescriptorConformalDetector` (a split-conformal
-detector over the 8-D descriptor vector) scores each real signal against a
-natural/broadband null and emits a conformal p-value `p_descriptor`. Inside
-`evaluate_ood` this is **Bonferroni-fused** with the HTRU2 conformal p-value:
+detector over the 10-D descriptor vector) scores each real signal against a
+natural/broadband null and emits a conformal p-value `p_descriptor` (audit
+members of the null are scored leave-one-out). Inside `evaluate_ood` this is
+**Bonferroni-fused** with the HTRU2 conformal p-value:
 
 $$p_{\text{fused}} = \min\!\bigl(1,\; 2\cdot\min(p_{\text{htru2}},\,p_{\text{descriptor}})\bigr)$$
 
@@ -124,24 +129,31 @@ only on a synthetic manifold placement.
 ## 3. High-Integrity Statistical Arbitration
 
 Final verdicts are computed through the `SignalArbitrator.arbitrate(...,
-ood_mask=...)` using classical ML plus distribution-free conformal inference:
+ood_mask=...)` using classical ML plus distribution-free conformal inference.
+The rule is branch-ordered; only the fused-p branch carries a finite-sample
+FPR guarantee (valid for Bonferroni-fused inputs), the rest is heuristic triage:
 
-1. **Per-class GMM scoring**: $s(x) = \max_c \log p(x \mid c)$, $c \in \{\text{Pulsar}, \text{RFI}\}$.
+1. **Per-class GMM scoring**: $s(x) = \max_c \log p(x \mid c)$, pooled
+   split-conformal calibration on the held-out max-score null (fixed before
+   any test point is seen).
 2. **Dual conformal fusion**: the HTRU2 conformal p-value is Bonferroni-combined
-   with the native-descriptor conformal p-value (§2c) so a real signal is flagged
-   when off-manifold in *either* its survey placement or its measured spectrogram
-   morphology. Records lacking a real spectrogram keep `p_descriptor = 1`.
- 3. **Absolute OOD rule**: a signal is only a candidate anomaly if
-    $s(x) < \min_i s(x_i) - \delta$ — i.e. it lies outside the manifold of *every*
-    known class, not merely in the lower tail of one.
- 4. **Conformalization**: maps the score to a class-conditional p-value via a
-    calibration split.
- 5. **FDR Correction**: Benjamini-Hochberg control on the p-value batch bounds the
-    false-alarm rate to $\alpha = 0.05$; `ood_mask` pre-filters the OOD candidates.
- 6. **Learned CNN branch**: `CosmicSignalCNN` scores the raw waveform as a 3-class
-    probability vector; it is fused with the ensemble via a geometric mean before
-    verdict assignment.
- 7. **Chaos Order contribution**: the order score (from `compute_chaos_descriptor`)
+   with the native-descriptor conformal p-value (§2c); the arbitrator receives
+   the fused $p_{\text{fused}}$ (flagging on raw $\min(p)$ would only bound FPR
+   at $2\alpha$). Records lacking a real spectrogram keep `p_descriptor = 1`.
+3. **Absolute OOD branch (non-conformal)**: $s(x) < \min_i s(x_i) - \delta$
+   forces an Anomaly verdict with NO finite-sample guarantee; it is a
+   sufficient heuristic trigger, not a necessary one.
+4. **In-distribution acceptance**: classifier confidence $\ge 0.80$ with
+   physics score $< 0.6$ accepts as Natural/Interference; high confidence with
+   a physics contradiction escalates to Candidate.
+5. **Candidate triage**: Benjamini-Hochberg batch scores, predicted-anomaly
+   class, or composite score $\ge 50$ escalate to Candidate. BH feeds only
+   this branch, so reported Anomaly flags are per-signal decisions without
+   batch FDR control, and FPR accounting counts Anomaly verdicts only.
+6. **Learned CNN branch**: `CosmicSignalCNN` scores the raw waveform as a 3-class
+   probability vector; it is fused with the ensemble via a geometric mean before
+   verdict assignment.
+7. **Chaos Order contribution**: the order score (from `compute_chaos_descriptor`)
      modulates the composite anomaly score, rewarding highly ordered (deterministic)
      waveforms when classifier support exists.
 
@@ -151,8 +163,9 @@ ood_mask=...)` using classical ML plus distribution-free conformal inference:
 
 The entire validation suite (7 test suites, see `benchmark.py`) is regenerated
 deterministically into `benchmarks/` by `scripts/generate_reports.py`
-(`make report`). `axiom.reporting.collect` re-executes each suite on real data
-under a fixed seed (42) and records structured metrics; `charts` renders 22
+(`make report`). `axiom.reporting.collect` re-executes each suite under a fixed
+seed (42) and records structured metrics; synthetic fallbacks engage only
+offline (gated by `AXIOM_REAL_OOD`, seeded, logged) and are labelled as such; `charts` renders 22
 300-dpi figures (cross-validation curves, confusion matrices, ROC/PR/calibration,
 learning & ablation, baselines, and Lane-1/Lane-2 population & OOD distributions);
 `report_writer` emits `README.md` (executive summary + verdict + chart gallery),

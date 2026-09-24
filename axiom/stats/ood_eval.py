@@ -88,7 +88,7 @@ def _natural_waterfall_null(n_seg: int = 12) -> list:
     """Real natural-spectrogram descriptor dicts for the descriptor null.
 
     Each reference ``.fil`` is windowed into ``n_seg`` time segments and the
-    8-D frequency-resolved descriptors are extracted per segment, mirroring how
+    10-D frequency-resolved descriptors are extracted per segment, mirroring how
     candidate spectrograms are characterised. Returns an empty list when no
     reference spectra are available (caller degrades the path to neutral).
     """

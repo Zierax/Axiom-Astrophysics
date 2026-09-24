@@ -42,9 +42,9 @@ property.
 For real telescope observations a *second*, fully measurement-driven feature space
 is derived directly from the 2-D spectrogram (frequency × time) by
 `axiom.dsp.waterfall_features.compute_waterfall_features`, without reference to any
-synthetic manifold placement. The descriptors — peak/integrated S/N, occupancy,
-spectral kurtosis, drift rate, bandwidth, channel concentration (Gini), and
-spectral flatness — encode the same physics the survey manifold cannot: *how*
+synthetic manifold placement. The ten descriptors — peak/integrated S/N, occupancy,
+spectral kurtosis, drift rate, bandwidth, channel concentration (Gini),
+spectral flatness, sub-bin flatness, and brightest-slice kurtosis — encode the same physics the survey manifold cannot: *how*
 concentrated and tonal the emission is across frequency. A narrowband carrier is
 characterised by high channel concentration and low spectral flatness (a tone),
 whereas a broadband astrophysical process spreads energy across the band. This
@@ -57,11 +57,8 @@ the verdict on a real observation rests on its own measured morphology.
 
 Once a signal is mapped into the feature manifold, the AXIOM engine employs a multi-layered arbitration process to determine its origin.
 
-### 3.1 The In-Distribution Boundary (Stacking Ensemble)
-Pulsars and terrestrial Radio Frequency Interference (RFI) share significant feature overlap, particularly at low Signal-to-Noise Ratios (SNR). The AXIOM engine uses a Stacking Ensemble:
-1. **Random Forest**: Builds uncorrelated decision trees to partition the feature space, reducing variance.
-2. **Histogram Gradient Boosting (HGBT)**: Iteratively corrects the residual errors of the forest, establishing precise nonlinear boundaries.
-3. **Logistic Meta-Learner**: Combines the predictions, acting as a final logical gate that prevents overfitting to specific training anomalies.
+### 3.1 The In-Distribution Boundary (HGBT-core classifier)
+Pulsars and terrestrial Radio Frequency Interference (RFI) share significant feature overlap, particularly at low Signal-to-Noise Ratios (SNR). The production lane classifies with an HGBT core (`AxiomEnsemble.predict` uses only the HistGradientBoosting core; a stacking design with RF/ET diversity learners was abandoned), while population-scale typing uses a plain `HistGradientBoostingClassifier(max_iter=300)`. Classification here is a saturation check, not the contribution.
 
 ### 3.2 The Out-of-Distribution Boundary (GMM & Conformal Prediction)
 How does the system react to a signal it has never seen before (e.g., an FRB or a technosignature)?
@@ -72,15 +69,16 @@ How does the system react to a signal it has never seen before (e.g., an FRB or 
    which preserves finite-sample false-positive control while allowing a signal to be flagged when it is off-manifold in **either** space. Observations without a real spectrogram keep $p_{\text{descriptor}} = 1$ and are judged solely on the survey manifold.
 
 ### 3.3 False Discovery Rate (FDR) Control
-In a dataset of billions of signals, relying on a static $p < 0.05$ threshold will yield millions of false positives. AXIOM applies the **Benjamini-Hochberg procedure** to control the expected proportion of false discoveries, dynamically scaling the significance threshold based on the total number of tests.
+In a dataset of billions of signals, relying on a static $p < 0.05$ threshold will yield millions of false positives. AXIOM computes **Benjamini-Hochberg scores** over each batch of fused p-values, but they feed only the **Candidate** triage branch: reported Anomaly flags are per-signal decisions ($\mathcal{P}_\mathrm{fused} \le \alpha$) without batch FDR control, and FPR accounting counts Anomaly verdicts only.
 
 ---
 
 ## 4. The Final Verdict
 
-The `SignalArbitrator` executes the final logic loop:
-1. If the Conformal FDR test fails (the signal is mathematically indistinguishable from the natural distribution), it is classed as **Natural** or **Interference**.
-2. If the test passes (the signal is a severe outlier), the Lyapunov Exponent is calculated. If the signal demonstrates high deterministic order (low chaos), it is elevated to **Candidate — Requires Review**.
-3. If it violates all known natural manifolds with high confidence, it is designated an **Anomaly**.
+The `SignalArbitrator` executes the final logic loop, in branch order:
+1. **Absolute-distance trigger (non-conformal).** A signal far below the entire natural population (`ood_mask`) is designated an **Anomaly** with no finite-sample guarantee — a sufficient heuristic trigger, not a necessary one.
+2. **Conformal trigger (guaranteed).** A Bonferroni-fused $\mathcal{P}_\mathrm{fused} \le \alpha$ is designated an **Anomaly** with finite-sample FPR control — the only branch carrying the guarantee.
+3. **Confident naturals.** Classifier confidence $\ge 0.80$ with physics score $< 0.6$ is classed **Natural**/**Interference**; high confidence with a physics contradiction escalates to **Candidate — Requires Review**.
+4. **Candidate triage.** BH-rejected batches, predicted-anomaly class, or composite score $\ge 50$ escalate to **Candidate**; the remainder follow the predicted class.
 
 The AXIOM designation of "Anomaly" does not inherently mean "Artificial." It means a statistical invariant has been breached, requiring immediate human scientific review.

@@ -4,7 +4,7 @@ This document defines the physical and statistical interpretation of the feature
 parameters used by AXIOM. §1–§3 describe the **HTRU2 in-distribution manifold**
 (the 8 survey moments used by the production classifier); §4 describes the
 **Lane-2 population-scale physical manifold** (the 12-D commensurate vector used
-for catalog-scale validation of thousands of independent real objects).
+for catalog-scale validation of thousands of catalogued entries).
 
 ---
 

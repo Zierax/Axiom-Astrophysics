@@ -1,8 +1,12 @@
 # Codebase Map — axiom-astrophysics
 
-> Context-engineering artifact. Verified against source on 2026-07-19. Purpose:
-> give a single coherent picture of architecture, data provenance, splits, and the
-> structural conflicts that currently corrupt results. NOT a status report — a map.
+> Context-engineering artifact. Verified against source on 2026-07-19; map rows
+> re-verified 2026-09-23 after the guarantee/determinism remediation (fused-p
+> verdicts, pooled calibration, seeded RNGs, dead-plumbing removal) and the
+> numbers rebuild (all tables regenerated from executed runs). Dated §9
+> entries are history and keep their original numbers; undated map claims are
+> current. Purpose: give a single coherent picture of architecture, data
+> provenance, splits, and past structural conflicts. NOT a status report — a map.
 
 ## 1. Package layout (`axiom/`)
 
@@ -21,7 +25,7 @@
 | `data/registry.py` | Dataset registry; `discover_real_ood_waterfalls` | `discover_real_ood_waterfalls` |
 | `dsp/features.py` | HTRU2 physics map (9 feats) + complexity | `physics_map_htru2_features` |
 | `dsp/waterfall.py` | Dispersion/narrowband featurizer (.fil/.h5) — 12-D via dedispersion | `extract_features` |
-| `dsp/waterfall_features.py` | Native 8-D frequency-resolved descriptors | `compute_waterfall_features`, `DescriptorConformalDetector` |
+| `dsp/waterfall_features.py` | Native 10-D frequency-resolved descriptors (+ LOO conformal detector) | `compute_waterfall_features`, `DescriptorConformalDetector` |
 | `dsp/physical_features.py` | 12-D physical featurizer (8 continuous + 4 presence) | `extract_physical_features` |
 | `dsp/synthesis.py` | **Synthetic** pulsar/FRB/RFI generators | `synthesize_*` |
 | `dsp/fil_reader.py` | SIGPROC `.fil` parser | `read_fil_spectrum` |
@@ -32,7 +36,7 @@
 | `stats/ood_eval.py` | **Primary OOD audit**: conformal fuse + arbitrator | `evaluate_ood` |
 | `stats/manifold_ood.py` | Split-conformal Mahalanobis (small-N caveat) | `ManifoldConformalDetector` |
 | `stats/group_ood.py` | StratifiedGroupKFold + leave-class-out | `group_ood` |
-| `stats/arbitration.py` | SignalArbitrator (BH-FDR + composite score) | `SignalArbitrator.arbitrate` |
+| `stats/arbitration.py` | SignalArbitrator (fused-p verdicts; BH + composite feed Candidate triage only; guarantee scope documented) | `SignalArbitrator.arbitrate` |
 | `stats/calibration.py` | ConformalCalibrator | `ConformalCalibrator` |
 | `stats/chaos.py` | Lyapunov + AAFT surrogates | `compute_chaos_descriptor` |
 | `reporting/collect.py` | Runs every suite deterministically | `collect_all` |
@@ -60,12 +64,12 @@
 
 | Dataset | Path | Real? | Pinned? | Role | Leakage risk |
 |---|---|---|---|---|---|
-| HTRU2 | `data/HTRU_2.csv` | Real (UCI) | **NO (SHA=None)** | ID train/eval | independent rows — OK |
+| HTRU2 | `data/HTRU_2.csv` | Real (UCI) | **Yes** (`HTRU2_SHA256` in `loader.py`) | ID train/eval | independent rows — OK |
 | ATNF (`B/psr/psr`) | `data/catalogs/atnf_psr.tsv` | Real | Yes (`catalog_locks.json`) | Lane-2 manifold | per-object group — OK |
 | CHIME/FRB (`J/ApJS/257/59`) | `data/catalogs/chime_frb_cat1.tsv` | Real | Yes | Lane-2 manifold | per-object group — OK |
 | Voyager1 `.fil` | `data/real_ood/voyager1.fil` | Real (GBT) | Yes (provenance) | Anomaly ground truth | single obs |
 | BL GUPPI `.gpuspec` | `data/kaggle/.../_extracted/` | Real (BL) | Yes | Unlabeled anomaly controls | single obs each |
-| `B0329+54.fil` | `data/real_ood/` | Real | — | **Natural null (descriptor)** | single obs |
+| `B0329+54.fil` | `data/real_ood/` | Real | — | **Natural control** (audit nulls; excluded from the fallback `.fil` null, which is FRB + broadband RFI only) | single obs |
 | `FRB180417.fil` | `data/real_ood/` | Real | — | **Natural null (descriptor)** | single obs |
 | `bl_obs.fil` | `data/real_ood/` | Real (BL GBT) | — | **Interference null** (resolved; was CONFLICT) | single obs |
 | Synthetic (`cache.py`, `synthesis.py`) | generated | **NO** | n/a | Fallback only | fabricated |
@@ -129,10 +133,11 @@
 
 ## 7. Test coverage
 
-11 files / 77 functions. Covered: ensemble, CNN (NumPy branch), arbitration, features,
+16 test files (incl. `test_determinism.py` pinning seeded local RNGs, LOO and
+pooled-calibration contracts). Covered: ensemble, CNN (NumPy branch), arbitration, features,
 group_ood, historical, manifold_ood, physical_features, populations, real_loaders,
-waterfall. **NOT covered**: torch CNN path (`# pragma: no cover`), `c_bindings` C
-extension, `cache.py` synthetic generation, full benchmark suites.
+waterfall, determinism. **NOT covered**: torch CNN path (`# pragma: no cover`), `c_bindings` C
+extension, full benchmark suites.
 
 ## 8. Priority fix order (structural first)
 

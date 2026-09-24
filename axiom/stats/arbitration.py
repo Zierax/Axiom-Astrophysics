@@ -12,10 +12,10 @@ from axiom.dsp.waterfall_features import FrequencyResolvedScorer
 class SignalArbitrator:
     """Final decision logic.
 
-    Combines stacking-ensemble predictions, per-class outlier density scores,
+    Combines HGBT-core ensemble predictions, per-class outlier density scores,
     a learned 1-D CNN waveform branch, conformal p-values, and nonlinear-dynamics
-    (chaos) descriptors.  Applies Benjamini-Hochberg FDR control to bound the
-    false-discovery rate and emits the final audit verdict.
+    (chaos) descriptors. Benjamini-Hochberg scores are computed per batch but
+    feed only the Candidate triage branch. Emits the final audit verdict.
 
     Guarantee scope (load-bearing): ONLY the ``p_values[i] <= conformal_alpha``
     branch carries the finite-sample conformal FPR guarantee, and only when

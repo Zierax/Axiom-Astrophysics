@@ -51,8 +51,8 @@ def run_production_pipeline(config_path=None):
     X_val, y_val = splits["val"]
     X_test, y_test = splits["test"]
 
-    # 2. Train stacking ensemble classifier
-    log.info("Step 2: Training AXIOM stacking ensemble classifier...")
+    # 2. Train HGBT-core classifier
+    log.info("Step 2: Training AXIOM HGBT-core classifier...")
     ensemble = AxiomEnsemble(n_classes=2, random_state=seed)
     ensemble.fit(X_train, y_train)
 

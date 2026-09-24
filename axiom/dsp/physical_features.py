@@ -2,7 +2,7 @@
 
 Heterogeneous surveys (ATNF pulsars, CHIME/FRB, HTRU2 RFI) are mapped onto a
 **single, physically-interpretable feature space** so that thousands of
-independent real objects live on one commensurate manifold. Unlike the waterfall
+catalogued entries live on one commensurate manifold. Unlike the waterfall
 featurizer (which operates on raw dynamic spectra), this map ingests the
 normalized catalog schema produced by :mod:`axiom.data.catalogs` — one row per
 independent astronomical object.

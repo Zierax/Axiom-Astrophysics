@@ -1,10 +1,32 @@
-# axiom-astrophysics v2.1: Multi-Layer Cosmic Signal Audit Engine
+# axiom-astrophysics v2.2: Guarantee Remediation & Numbers Rebuild
+
+## Version 2.2 - Guarantee Remediation & Numbers Rebuild (2026-09-23)
+
+**What changed (9 fix commits, each verified by an independent review agent):**
+- **Verdicts now execute the published guarantee.** The arbitrator receives
+  Bonferroni-fused p-values (previously raw min-p, bounding FPR only at
+  2α); the significance comparison is `<=`; the OOD-mask branch is marked
+  explicitly non-conformal; dead `physics_weight` plumbing removed.
+- **Calibration made valid.** Pooled held-out max-score null via the single
+  `ConformalCalibrator` (test-dependent "nearest-class" selection removed);
+  descriptor null scored leave-one-out; N_cal ≈ 3,580 (was misstated).
+- **Determinism.** All stochastic paths use seeded local RNGs (no global-state
+  pollution); new `tests/test_determinism.py`.
+- **Anchor disclosed.** The narrowband carrier placement is documented as
+  hand-specified, tracked per-signal (`anchored_mask`), and warns loudly.
+- **Every table regenerated from executed runs** (`scripts/run_population_baselines.py`,
+  `scripts/run_ood_ablations.py`): population MCC **0.9689** (the old 0.9752 did
+  not reproduce), leave-class-out FRB AUROC **0.9997**, rare-class F1 **0.365** disclosed, RF beats HGBT at closed-set
+  classification (McNemar χ²=74.1), Voyager 31-record real-file audit
+  (p_fused=0.0006; descriptor alone misses at 0.19), measured ablations, real ROC.
+- Full suite: **129 passed** (5 pre-existing env failures: system torch +
+  missing `blimpy`, proven identical at base commit).
 
 ## Version 2.1 - Production Hardening & Real Data Pipeline (2026-07-27)
 
 **Major Improvements:**
-- **Voyager 1 detected end-to-end**: production pipeline (`run_axiom.py`) achieves **TPR 1.000 / FPR 0.000** on 69 real telescope signals (4 provenance-pinned .fil + 65 Kaggle SETI GUPPI spectrograms). Voyager's fused p-value: **p_fused = 0.0023** (significant at α=0.05).
-- **Off-manifold anchor for narrowband carriers**: zero-DM signals placed at the physically correct off-manifold position on the HTRU2 manifold (not hand-tuned — derived from the HTRU2 feature map geometry).
+- **Voyager 1 detected end-to-end**: production pipeline (`run_axiom.py`) achieves **TPR 1.000 / FPR 0.000** on 69 real telescope signals (4 provenance-pinned .fil + 65 Kaggle SETI GUPPI spectrograms). Voyager's fused p-value: **p_fused = 0.0023** (significant at α=0.05). *(Superseded by v2.2 above: the 69-sample composition was never pinned to a manifest and the number did not reproduce. The current auditable carrier audit is 31 records, p_fused=0.0006, with the descriptor-miss disclosed.)*
+- **Off-manifold anchor for narrowband carriers**: zero-DM signals placed at the physically correct off-manifold position on the HTRU2 manifold (not hand-tuned — derived from the HTRU2 feature map geometry). *(Superseded by v2.2: the placement is documented as hand-specified, tracked per-signal in `anchored_mask`, and warns loudly.)*
 - **Bonferroni fusion** is the primary p-value fusion method (valid under arbitrary dependence between the HTRU2 and descriptor conformal tests): `p_fused = min(1, min(2·p_htru2, 2·p_desc))`. **Fisher's method** (`T = -2·Σln(p_i)`, `p_fisher = χ².sf(T, df=2)`) is reported as a supplementary sensitivity analysis but requires independence and is anti-conservative under the positive dependence in this setting.
 - **114 tests** across 15 test files. All library modules use `logging` (no `print()`), no silent exception swallowing, no CWD-dependent paths.
 
@@ -13,6 +35,7 @@
 **Major Improvements:**
 - **Lane-2 Population-Scale Catalog Manifold**: assembles **19,252 independent real objects** (ATNF pulsars, CHIME/FRB bursts, HTRU2 RFI) from verified, provenance-pinned catalogs through one commensurate physical featurizer, with per-object group cross-validation (no within-observation leakage) and bootstrap confidence intervals.
 - **Group-aware evaluation (Suite 7)**: leakage-free multiclass typing (**MCC 0.817**) and leave-class-out conformal OOD with the entire extragalactic FRB population withheld (**AUROC 0.9998**).
+*(Superseded by v2.2 above: regenerated MCC 0.9689 [0.9643–0.9736], AUROC 0.9997 [0.9995–0.9999]; the v2.1 numbers did not reproduce under the current tree.)*
 - **Reproducible catalog fetching**: multi-backend downloader (VizieR / Kaggle / HTTP) with pin-on-first-fetch SHA-256 locks and offline replay.
 
 ## Version 2.0 - Production-Grade Release (2026-07-13)
@@ -20,8 +43,8 @@
 **Major Improvements:**
 - **Real-World HTRU2 Integration**: Auto-downloads and verifies UCI's 17,898 candidate profiles directly.
 - **Repository Cleanliness**: Organized all raw data files into the `data/` directory and model serialization caches into the `data/models/` directory.
-- **Robust Tabular Stacking**: Implements a high-precision sklearn-only stacking classifier (Random Forest + HistGradientBoosting stacked via Logistic Regression) to handle extreme class imbalance (10:1) without fake waveform synthesis.
-- **Conformal Calibration**: Computes distribution-free conformal p-values to control the False Alarm Rate under covariate shift.
+- **Robust Tabular Stacking**: Implements a high-precision sklearn-only stacking classifier (Random Forest + HistGradientBoosting stacked via Logistic Regression) to handle extreme class imbalance (10:1) without fake waveform synthesis. *(Superseded: the stacking design was abandoned — `predict` uses only the HGBT core; see v2.2 and §02 item 1.)*
+- **Conformal Calibration**: Computes distribution-free conformal p-values to control the False Alarm Rate under covariate shift. *(Superseded: the guarantee is exchangeability-conditional, not covariate-shift; see v2.2 and §02 item 3.)*
 - **Chaos Diagnostics**: Vectorized Lyapunov Exponent estimation using scipy.spatial.distance.cdist, achieving >100x speedups.
 - **Validation Suite**: Rigorously evaluates 7 statistical suites (in-distribution CV, ablation, OOD anomaly, baselines, significance, and the two real-data manifold lanes).
 
@@ -44,7 +67,7 @@ The engine employs a multi-tiered verification pipeline combining classification
 
 ```mermaid
 graph TD
-    A[Raw HTRU2 Candidates] --> B[AxiomEnsemble Stacking Classifier]
+    A[Raw HTRU2 Candidates] --> B[AxiomEnsemble HGBT-Core Classifier]
     A --> C[AnomalyDensityEstimator GMM]
     B --> D[SignalArbitrator]
     C --> E[ConformalCalibrator]
@@ -67,15 +90,15 @@ pathway: all classes pass through one deterministic featurizer on real dynamic
 spectra. The HTRU2 pathway (`A`/`F`) drives the in-distribution classifier.*
 
 ### Core Logic Modules:
-1. **AxiomEnsemble**: Stacking ensemble classifier using Random Forest (class-weighted bagging) and HistGradientBoosting (regularized boosting) stacked via L2-regularized Logistic Regression. Designed specifically to classify known In-Distribution signals (Pulsars vs. RFI).
+1. **AxiomEnsemble**: HGBT-core binary classifier for the HTRU2 lane (`predict` uses only the HistGradientBoosting core; RF/ET are fit-but-unused diversity learners). Population-scale typing uses a plain HGBT instead. Designed to classify known In-Distribution signals (Pulsars vs. RFI).
 2. **AnomalyDensityEstimator**: Multi-modal Gaussian Mixture Model (GMM) fit
    **per class** (Pulsar, RFI); scores a signal by the maximum class-likelihood
    `max_c log p(x|c)` for Out-Of-Distribution (OOD) discovery. Combined with an
    **absolute OOD rule** (a signal must lie far below the entire natural
    population, not merely in the lower tail of one class) so legitimate
    astrophysical sources (FRBs, quasars) are not mislabelled as anomalies.
-3. **ConformalCalibrator**: Computes split conformal p-values using a held-out validation set to guarantee nominal coverage and avoid arbitrary thresholding.
-4. **SignalArbitrator**: Combines stacking predicted probabilities, conformal p-values, a learned 1-D CNN waveform branch (`CosmicSignalCNN`), and a bounded chaos/order score. Enforces Benjamini-Hochberg False Discovery Rate (FDR) control at alpha = 0.05.
+3. **ConformalCalibrator**: Computes split conformal p-values on a held-out calibration null for valid finite-sample coverage under exchangeability (no arbitrary thresholding).
+4. **SignalArbitrator**: Combines fused ensemble/CNN probabilities, Bonferroni-fused conformal p-values, a bounded chaos/order score, waterfall and physics evidence. Only the fused-p branch carries the FPR guarantee; the OOD-mask, BH/Candidate and composite branches are heuristic triage (BH scores feed Candidate escalation only).
 
 ---
 
@@ -106,7 +129,7 @@ recovered DMs are physically validated against catalogs.
 ### Lane-2 Population-Scale Catalog Manifold (per-object, group CV)
 
 For **population-level** claims, `axiom/data/catalogs.py` + `axiom/data/population.py`
-assemble **19,252 independent real objects** drawn from verified, provenance-pinned
+assemble **19,252 catalogued entries** drawn from verified, provenance-pinned
 catalogs and map them through one commensurate physical featurizer
 (`axiom/dsp/physical_features.py`):
 
@@ -132,42 +155,41 @@ explicit missingness indicators and leakage-free fold-local imputation.
 
 ## 04. Audit Performance & Empirical Results
 
-5-Fold Stratified Cross-Validation on the Parkes Observatory HTRU2 database yields:
+5-Fold Stratified Cross-Validation on the Parkes Observatory HTRU2 database yields
+(regenerated `benchmarks/reports/suite_1_in_distribution.json`):
 
-- **Accuracy**: **98.07%** (95% Wilson CI: 97.86%–98.26%)
-- **Matthews Correlation Coefficient (MCC)**: **0.8805**
-- **Area Under ROC Curve (AUC-ROC)**: **0.9758**
+- **Accuracy**: **98.06%**
+- **Matthews Correlation Coefficient (MCC)**: **0.8796** (AXIOM, tied with HGBT-100 by construction; nested-CV HGBT best at 0.8801)
+- **Baselines (Suite 4, same splits)**: McNemar AXIOM vs nested-HGBT is an honest null (25/25 discordant, χ²=0.02, p=0.89) — near-ceiling tie, not a win.
 - **Real-Waterfall Manifold OOD (Lane 1, HONEST CURRENT RESULT)**: a single
   deterministic featurizer (`axiom/dsp/waterfall.py`, 12-D via incoherent
   dedispersion) ingests real, checksum-verified dynamic spectra for **all**
   classes — pulsar (B0329+54), FRB (FRB180417), broadband RFI (GBT), and an
-  artificial narrowband carrier (Voyager 1). Recovered dispersion measures match
-  published catalogs (**B0329+54 → 27.4 pc/cm³** vs cat ≈26.8; **FRB180417 →
-  473.7** vs cat ≈474.8), so features are *measured*, not by construction.
-  Cross-conformal OOD (alpha=0.1) currently yields **AUROC 0.570** (≈ chance),
+  artificial narrowband carrier (Voyager 1). Cross-conformal OOD (alpha=0.1,
+  regenerated `suite_6_manifold_lane1.json`) yields **AUROC 0.419** (≈ chance),
   **16.7% TPR** on the artificial carrier, **9.7% FPR**, and **90.3% calibrated
-  coverage** on normals. The frequency-resolved descriptors do **not** separate
-  the genuine Voyager carrier from natural waterfalls in this run; the descriptor-
-  conformal fusion (the intended primary detector) is inactive because no real
-  natural spectrogram null is supplied. This is an honest FAIL and the top
-  priority for the next iteration (see BENCHMARKS §3/§9).
-  **Note:** The production pipeline (`run_axiom.py`) achieves **TPR 1.000 / FPR 0.000** on 69 real signals with the full descriptor-conformal + off-manifold anchor path enabled — the benchmark Suite 3 uses a different evaluation protocol without the real spectrogram null.
+  coverage** on normals. The Lane-1 featurizer alone does **not** separate
+  carriers from natural waterfalls in this run; carrier detection rides on the
+  descriptor-conformal path and the disclosed anchored placement (see the
+  31-record real-file audit below and the discovery paper §6.3).
 - **Population-Scale Catalog Manifold (Lane 2, primary population result)**:
-  **19,252 independent real objects** across five populations, evaluated
-  leakage-free with cross-validation keyed on each object's unique id:
-  - *Multiclass typing* (`StratifiedGroupKFold`, HistGradientBoosting):
-    **MCC 0.817** (95% bootstrap CI 0.807–0.826), **weighted-F1 0.964**
-    (0.962–0.967). Per-class F1: pulsar 0.95, RFI 0.97, FRB 0.87. Macro-F1 is
-    lower (0.60) *by design and honestly reported*: RRAT (n=79) and magnetar
-    (n=4) are rotation-powered neutron-star subtypes that physically overlap the
-    pulsar population in DM/period/width and cannot be separated on catalog
-    parameters alone.
+  **19,252 catalogued entries** across four classes, evaluated
+  leakage-free with cross-validation keyed on each object's unique id
+  (regenerated `suite_7_population_lane2.json`):
+  - *Multiclass typing* (`StratifiedGroupKFold`, HGBT-300):
+    **MCC 0.9689** (95% bootstrap CI 0.9643–0.9736), **weighted-F1 0.9916**
+    (0.9904–0.9930). Per-class F1: pulsar 0.968, RFI 1.000, FRB 0.956,
+    RARE 0.365. Macro-F1 is 0.8221 and the merged RRAT-plus-magnetar class
+    (n=83) collapses (recall 0.37) — reported prominently, not buried.
+    Population-scale baselines (`scripts/run_population_baselines.py`): RF
+    wins (MCC 0.9883) over HGBT-300 (0.9689), McNemar χ²=74.1 — classification
+    is a saturation check; DM-space separability, not modelling, drives it.
   - *Leave-class-out conformal OOD* (extragalactic FRBs withheld entirely):
-    **AUROC 0.9998** (95% CI 0.9997–1.0000), **100% TPR**, **10.0% FPR**,
-    **90.0% calibrated coverage** at alpha=0.1. FRB separability reflects genuine
-    extragalactic dispersion — DM far above the catalog's *own* YMW16 Galactic
-    prediction — so it validates the physical feature space rather than being a
-    circular construction.
+    **AUROC 0.9997** (95% CI 0.9995–0.9999), **100% TPR**, **10.0% FPR**,
+    **90.0% calibrated coverage** at alpha=0.1 (Mahalanobis population lane;
+    Isolation Forest on identical splits: 0.9751). A plain DM-excess
+    threshold already reaches 0.9993 — FRB recovery demonstrates manifold
+    sensibility, not discovery power.
 
 ### Visual Diagnostics & Reports
 Complete, machine-regenerated verification reports and figures are produced by
@@ -197,7 +219,7 @@ pip install numpy scipy scikit-learn joblib matplotlib
 ### Execution Protocol
 
 **Run the Production Pipeline**
-Trains the stacking classifier, GMM estimator, conformal calibrator, and evaluates OOD performance:
+Trains the HGBT-core classifier, GMM estimator, conformal calibrator, and evaluates OOD performance:
 ```bash
 python3 run_axiom.py
 ```
@@ -234,19 +256,18 @@ extend it to other VizieR catalogs.
 
 - **OOD validation uses real telescope data (Lane 1) and real catalog populations
   (Lane 2).** Lane 1 ingests real, checksum-verified filterbank waterfalls through
-  one deterministic featurizer; DM recovery matches published catalogs, so the
-  separation is *measured*, not by construction. Lane 2 removes the earlier
-  single-observation pseudo-replication limitation entirely: it evaluates **19,252
-  independent real objects** (ATNF, CHIME/FRB, HTRU2) with per-object group
-  cross-validation. The HTRU2 classifier lane uses real HTRU2 candidates only;
-  no synthetic waveforms are used in any reported result.
-  **Real technosignature anomaly basis (closed a prior gap):** the artificial
-  anomaly set now prefers genuine Breakthrough Listen observations — the real
+  one deterministic featurizer. Lane 2 evaluates **19,252
+  catalogued entries** (ATNF, CHIME/FRB, HTRU2) with per-object group
+  cross-validation. Synthetic generators exist for offline fallback only
+  (gated by `AXIOM_REAL_OOD`, seeded, logged); they are never part of the
+  reported population or real-file evaluations, and sensitivity audits that
+  use a seeded synthetic set are disclosed as such.
+  **Real technosignature anomaly basis:** the artificial
+  anomaly set prefers genuine Breakthrough Listen observations — the real
   Voyager 1 carrier/sidebands **and real GUPPI `.gpuspec` spectrograms of nearby
   stars from the Kaggle `tentotheminus9/breakthrough-listen-search-for-advanced-life`
-  release** (120 ON-target + 10 OFF-reference waterfalls, measured S/N, placed on
-  the HTRU2 manifold at DM=0). Lane 2's OOD anomaly is a real *natural*
-  novel population (FRBs); the engineered *technosignature* anomaly is now represented
+  release** (120 ON-target + 10 OFF-reference waterfalls). Lane 2's OOD anomaly is a real *natural*
+  novel population (FRBs); the engineered *technosignature* anomaly is represented
   by real telescope signals, not a single source.
 - **Chaos descriptor.** The nonlinear-dynamics branch uses a surrogate-calibrated,
   bounded order score (`chaos_order_score`: AAFT surrogate significance of the
@@ -259,19 +280,28 @@ extend it to other VizieR catalogs.
    (data the density estimator never saw) for valid coverage. The OOD audit's
    *anomaly* class uses real telescope signals (Voyager 1 + Breakthrough
    Listen GUPPI spectrograms).
-  - **Real anomaly controls are unlabeled telescope data.** The Breakthrough
-    Listen GUPPI spectrograms are genuine, unlabeled stellar observations, not
-    adjudicated technosignatures. They are used as *anomaly controls*: we verify
-    the engine surfaces off-manifold telescope signals. **Current results:**
-    - *Production pipeline* (`run_axiom.py`): **TPR 1.000 / FPR 0.000** on 69 real signals (Voyager 1 detected, p_fused=0.0023). The off-manifold anchor + Bonferroni fusion path is active.
-    - *Benchmark Suite 3*: **TPR 32%** on the real set, 0% natural FPR. Uses a different evaluation protocol without the real spectrogram null — see BENCHMARKS §3/§6.
-    An "Anomaly" verdict therefore means *off the natural manifold*, **not** proof of artificial origin — see §07.
+   - **Real anomaly controls are unlabeled telescope data.** The Breakthrough
+     Listen GUPPI spectrograms are genuine, unlabeled stellar observations, not
+     adjudicated technosignatures. They are used as *anomaly controls*: we verify
+     the engine surfaces off-manifold telescope signals. **Current results:**
+     - *Real-file audit* (31 records from `voyager1.fil`, `FRB180417.fil`,
+       `bl_obs.fil`, `B0329+54.fil`; `benchmarks/reports/voyager_realfile_audit.json`):
+       **TPR 1.000 / FPR 0.000**. Voyager 1 is flagged Anomaly via the
+       absolute-density mask plus the disclosed anchored HTRU2 placement
+       (p_fused=0.0006); the descriptor morphology alone is not significant
+       (p_desc=0.19) and would have missed it.
+     - *Benchmark Suite 3* (regenerated `suite_3_ood_detection.json`):
+       real-augmented set, 51 samples, **FPR 0.02**; no anomaly-role records
+       offline (Voyager fetch needs `blimpy`), so its TPR is vacuous there —
+       use the real-file audit above for the carrier claim.
+     An "Anomaly" verdict therefore means *off the natural manifold*, **not** proof of artificial origin — see §07.
  - **Native waterfall morphology now drives the primary verdict.** The
    natural catalog population (HTRU2 pulsars/RFI, ATNF, CHIME/FRB) lives in
     the 8-D HTRU2 feature space, so real signals are *also* scored there via
     their measured S/N (DM=0). Critically, a real observation's **measured**
     frequency-resolved descriptors (peak/integrated S/N, occupancy, spectral
-    kurtosis, drift, bandwidth, channel concentration, spectral flatness) are
+    kurtosis, drift, bandwidth, channel concentration, spectral flatness,
+    sub-bin flatness, brightest-slice kurtosis — ten in total) are
     featurised directly from its real 2-D spectrogram and feed a
     **descriptor-conformal p-value** (`DescriptorConformalDetector`) that is
     Bonferroni-fused into the OOD decision inside `evaluate_ood`:

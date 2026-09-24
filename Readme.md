@@ -15,8 +15,8 @@
 - **Anchor disclosed.** The narrowband carrier placement is documented as
   hand-specified, tracked per-signal (`anchored_mask`), and warns loudly.
 - **Every table regenerated from executed runs** (`scripts/run_population_baselines.py`,
-  `scripts/run_ood_ablations.py`): population MCC **0.9689** (the old 0.9752 did
-  not reproduce), leave-class-out FRB AUROC **0.9997**, rare-class F1 **0.365** disclosed, RF beats HGBT at closed-set
+  `scripts/run_ood_ablations.py`): population MCC **0.9689** (supersedes a
+  previously reported value that did not reproduce under the current tree), leave-class-out FRB AUROC **0.9997**, rare-class F1 **0.365** disclosed, RF beats HGBT at closed-set
   classification (McNemar χ²=74.1), Voyager 31-record real-file audit
   (p_fused=0.0006; descriptor alone misses at 0.19), measured ablations, real ROC.
 - Full suite: **129 passed** (5 pre-existing env failures: system torch +

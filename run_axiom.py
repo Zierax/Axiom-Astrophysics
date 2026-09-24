@@ -2,8 +2,8 @@
 axiom-astrophysics v2 — Production Pipeline Orchestrator
 ===========================================================
 
-Downloads and loads the real-world HTRU2 dataset, trains the Stacking
-Classifier and GMM Density Estimator, and runs conformal anomaly detection.
+Downloads and loads the real-world HTRU2 dataset, trains the HGBT-core
+classifier and GMM Density Estimator, and runs conformal anomaly detection.
 """
 import argparse
 import logging

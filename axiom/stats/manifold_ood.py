@@ -24,7 +24,7 @@ test point is
 
     p(x) = (1 + #{ cal : s(cal) >= s(x) }) / (n_cal + 1),
 
-which yields *exact finite-sample* false-positive control: flagging p(x) <= alpha
+which yields *valid finite-sample* false-positive control: flagging p(x) <= alpha
 guarantees a normal false-positive rate <= alpha under exchangeability. We also
 report the threshold-free AUROC (normal vs. artificial), which does not depend on
 any operating point and is the primary OOD metric.
